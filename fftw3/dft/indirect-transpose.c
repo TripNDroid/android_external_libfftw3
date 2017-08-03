@@ -1,4 +1,28 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
 
+/* solvers/plans for vectors of DFTs corresponding to the columns
+   of a matrix: first transpose the matrix so that the DFTs are
+   contiguous, then do DFTs with transposed output.   In particular,
+   we restrict ourselves to the case of a square transpose (or a
+   sequence thereof). */
 
 #include "dft.h"
 
@@ -11,7 +35,7 @@ typedef struct {
 } P;
 
 /* initial transpose is out-of-place from input to output */
-static void apply_op(const plan *ego_, float *ri, float *ii,float *ro, float *io)
+static void apply_op(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      const P *ego = (const P *) ego_;
      INT vl = ego->vl, ivs = ego->ivs, ovs = ego->ovs, i;
@@ -37,23 +61,23 @@ static void apply_op(const plan *ego_, float *ri, float *ii,float *ro, float *io
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cldrest);
-     fftwf_plan_destroy_internal(ego->cld);
-     fftwf_plan_destroy_internal(ego->cldtrans);
+     X(plan_destroy_internal)(ego->cldrest);
+     X(plan_destroy_internal)(ego->cld);
+     X(plan_destroy_internal)(ego->cldtrans);
 }
 
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cldtrans, wakefulness);
-     fftwf_plan_awake(ego->cld, wakefulness);
-     fftwf_plan_awake(ego->cldrest, wakefulness);
+     X(plan_awake)(ego->cldtrans, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
+     X(plan_awake)(ego->cldrest, wakefulness);
 }
 
 static void print(const plan *ego_, printer *p)
 {
      const P *ego = (const P *) ego_;
-     p->print(p, "(indirect-transpose%v%(%p%)%(%p%)%(%p%))",
+     p->print(p, "(indirect-transpose%v%(%p%)%(%p%)%(%p%))", 
 	      ego->vl, ego->cldtrans, ego->cld, ego->cldrest);
 }
 
@@ -62,12 +86,12 @@ static int pickdim(const tensor *vs, const tensor *s, int *pdim0, int *pdim1)
      int dim0, dim1;
      *pdim0 = *pdim1 = -1;
      for (dim0 = 0; dim0 < vs->rnk; ++dim0)
-          for (dim1 = 0; dim1 < s->rnk; ++dim1)
-	       if (vs->dims[dim0].n * fftwf_iabs(vs->dims[dim0].is) <= fftwf_iabs(s->dims[dim1].is)
+          for (dim1 = 0; dim1 < s->rnk; ++dim1) 
+	       if (vs->dims[dim0].n * X(iabs)(vs->dims[dim0].is) <= X(iabs)(s->dims[dim1].is)
 		   && vs->dims[dim0].n >= s->dims[dim1].n
-		   && (*pdim0 == -1
-		       || (fftwf_iabs(vs->dims[dim0].is) <= fftwf_iabs(vs->dims[*pdim0].is)
-			   && fftwf_iabs(s->dims[dim1].is) >= fftwf_iabs(s->dims[*pdim1].is)))) {
+		   && (*pdim0 == -1 
+		       || (X(iabs)(vs->dims[dim0].is) <= X(iabs)(vs->dims[*pdim0].is)
+			   && X(iabs)(s->dims[dim1].is) >= X(iabs)(s->dims[*pdim1].is)))) {
 		    *pdim0 = dim0;
 		    *pdim1 = dim1;
 	       }
@@ -85,7 +109,7 @@ static int applicable0(const solver *ego_, const problem *p_,
 	     && FINITE_RNK(p->vecsz->rnk) && FINITE_RNK(p->sz->rnk)
 
 	     /* FIXME: can/should we relax this constraint? */
-	     && fftwf_tensor_inplace_strides2(p->vecsz, p->sz)
+	     && X(tensor_inplace_strides2)(p->vecsz, p->sz)
 
 	     && pickdim(p->vecsz, p->sz, pdim0, pdim1)
 
@@ -128,10 +152,10 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      int pdim0, pdim1;
      tensor *ts, *tv;
      INT vl, ivs, ovs;
-     float *rit, *iit, *rot, *iot;
+     R *rit, *iit, *rot, *iot;
 
      static const plan_adt padt = {
-	  fftwf_dft_solve, awake, print, destroy
+	  X(dft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr, &pdim0, &pdim1))
@@ -146,32 +170,32 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      rot = TAINT(p->ro, vl == 1 ? 0 : ovs);
      iot = TAINT(p->io, vl == 1 ? 0 : ovs);
 
-     ts = fftwf_tensor_copy_inplace(p->sz, INPLACE_IS);
+     ts = X(tensor_copy_inplace)(p->sz, INPLACE_IS);
      ts->dims[pdim1].os = p->vecsz->dims[pdim0].is;
-     tv = fftwf_tensor_copy_inplace(p->vecsz, INPLACE_IS);
+     tv = X(tensor_copy_inplace)(p->vecsz, INPLACE_IS);
      tv->dims[pdim0].os = p->sz->dims[pdim1].is;
      tv->dims[pdim0].n = p->sz->dims[pdim1].n;
-     cldtrans = fftwf_mkplan_d(plnr,
-			    fftwf_mkproblem_dft_d(fftwf_mktensor_0d(),
-					       fftwf_tensor_append(tv, ts),
-					       rit, iit,
+     cldtrans = X(mkplan_d)(plnr, 
+			    X(mkproblem_dft_d)(X(mktensor_0d)(),
+					       X(tensor_append)(tv, ts),
+					       rit, iit, 
 					       rot, iot));
-     fftwf_tensor_destroy2(ts, tv);
+     X(tensor_destroy2)(ts, tv);
      if (!cldtrans) goto nada;
 
-     ts = fftwf_tensor_copy(p->sz);
+     ts = X(tensor_copy)(p->sz);
      ts->dims[pdim1].is = p->vecsz->dims[pdim0].is;
-     tv = fftwf_tensor_copy(p->vecsz);
+     tv = X(tensor_copy)(p->vecsz);
      tv->dims[pdim0].is = p->sz->dims[pdim1].is;
      tv->dims[pdim0].n = p->sz->dims[pdim1].n;
-     cld = fftwf_mkplan_d(plnr, fftwf_mkproblem_dft_d(ts, tv,
+     cld = X(mkplan_d)(plnr, X(mkproblem_dft_d)(ts, tv,
 						rot, iot,
 						rot, iot));
      if (!cld) goto nada;
 
-     tv = fftwf_tensor_copy(p->vecsz);
+     tv = X(tensor_copy)(p->vecsz);
      tv->dims[pdim0].n -= vl * p->sz->dims[pdim1].n;
-     cldrest = fftwf_mkplan_d(plnr, fftwf_mkproblem_dft_d(fftwf_tensor_copy(p->sz), tv,
+     cldrest = X(mkplan_d)(plnr, X(mkproblem_dft_d)(X(tensor_copy)(p->sz), tv,
 						    p->ri + ivs * vl,
 						    p->ii + ivs * vl,
 						    p->ro + ovs * vl,
@@ -185,15 +209,15 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->vl = vl;
      pln->ivs = ivs;
      pln->ovs = ovs;
-     fftwf_ops_cpy(&cldrest->ops, &pln->super.super.ops);
-     fftwf_ops_madd2(vl, &cld->ops, &pln->super.super.ops);
-     fftwf_ops_madd2(vl, &cldtrans->ops, &pln->super.super.ops);
+     X(ops_cpy)(&cldrest->ops, &pln->super.super.ops);
+     X(ops_madd2)(vl, &cld->ops, &pln->super.super.ops);
+     X(ops_madd2)(vl, &cldtrans->ops, &pln->super.super.ops);
      return &(pln->super.super);
 
  nada:
-     fftwf_plan_destroy_internal(cldrest);
-     fftwf_plan_destroy_internal(cld);
-     fftwf_plan_destroy_internal(cldtrans);
+     X(plan_destroy_internal)(cldrest);
+     X(plan_destroy_internal)(cld);
+     X(plan_destroy_internal)(cldtrans);
      return (plan *)0;
 }
 
@@ -204,7 +228,7 @@ static solver *mksolver(void)
      return slv;
 }
 
-void fftwf_dft_indirect_transpose_register(planner *p)
+void X(dft_indirect_transpose_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }

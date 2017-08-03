@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
 
 #include "ifftw.h"
 #include <stddef.h>
@@ -33,12 +53,12 @@ static void putint(printer *p, INT i)
 	  p->putchr(p, '-');
 	  i = -i;
      }
-
+     
      do {
 	  *f++ = digits[i % 10];
 	  i /= 10;
      } while (i);
-
+     
      do {
 	  p->putchr(p, *--f);
      } while (f != buf);
@@ -150,9 +170,9 @@ static void vprint(printer *p, const char *format, va_list ap)
 		       case 'p': {  /* note difference from C's %p */
 			    /* print plan */
 			    plan *x = va_arg(ap, plan *);
-			    if (x)
+			    if (x) 
 				 x->adt->print(x, p);
-			    else
+			    else 
 				 goto putnull;
 			    break;
 		       }
@@ -169,7 +189,7 @@ static void vprint(printer *p, const char *format, va_list ap)
 			    /* print tensor */
 			    tensor *x = va_arg(ap, tensor *);
 			    if (x)
-				 fftwf_tensor_print(x, p);
+				 X(tensor_print)(x, p);
 			    else
 				 goto putnull;
 			    break;
@@ -202,7 +222,7 @@ static void print(printer *p, const char *format, ...)
      va_end(ap);
 }
 
-printer *fftwf_mkprinter(size_t size,
+printer *X(mkprinter)(size_t size, 
 		      void (*putchr)(printer *p, char c),
 		      void (*cleanup)(printer *p))
 {
@@ -216,9 +236,9 @@ printer *fftwf_mkprinter(size_t size,
      return s;
 }
 
-void fftwf_printer_destroy(printer *p)
+void X(printer_destroy)(printer *p)
 {
      if (p->cleanup)
 	  p->cleanup(p);
-     fftwf_ifree(p);
+     X(ifree)(p);
 }

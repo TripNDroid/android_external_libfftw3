@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
 #include "rdft.h"
 #include <stddef.h>
 
@@ -5,32 +26,32 @@ static void destroy(problem *ego_)
 {
      problem_rdft *ego = (problem_rdft *) ego_;
 #if !defined(STRUCT_HACK_C99) && !defined(STRUCT_HACK_KR)
-     fftwf_ifree0(ego->kind);
+     X(ifree0)(ego->kind);
 #endif
-     fftwf_tensor_destroy2(ego->vecsz, ego->sz);
-     fftwf_ifree(ego_);
+     X(tensor_destroy2)(ego->vecsz, ego->sz);
+     X(ifree)(ego_);
 }
 
 static void kind_hash(md5 *m, const rdft_kind *kind, int rnk)
 {
      int i;
      for (i = 0; i < rnk; ++i)
-	  fftwf_md5int(m, kind[i]);
+	  X(md5int)(m, kind[i]);
 }
 
 static void hash(const problem *p_, md5 *m)
 {
      const problem_rdft *p = (const problem_rdft *) p_;
-     fftwf_md5puts(m, "rdft");
-     fftwf_md5int(m, p->I == p->O);
+     X(md5puts)(m, "rdft");
+     X(md5int)(m, p->I == p->O);
      kind_hash(m, p->kind, p->sz->rnk);
-     fftwf_md5int(m, fftwf_alignment_of(p->I));
-     fftwf_md5int(m, fftwf_alignment_of(p->O));
-     fftwf_tensor_md5(m, p->sz);
-     fftwf_tensor_md5(m, p->vecsz);
+     X(md5int)(m, X(alignment_of)(p->I));
+     X(md5int)(m, X(alignment_of)(p->O));
+     X(tensor_md5)(m, p->sz);
+     X(tensor_md5)(m, p->vecsz);
 }
 
-static void recur(const iodim *dims, int rnk, float *I)
+static void recur(const iodim *dims, int rnk, R *I)
 {
      if (rnk == RNK_MINFTY)
           return;
@@ -50,14 +71,14 @@ static void recur(const iodim *dims, int rnk, float *I)
      }
 }
 
-void fftwf_rdft_zerotens(tensor *sz, float *I)
+void X(rdft_zerotens)(tensor *sz, R *I)
 {
      recur(sz->dims, sz->rnk, I);
 }
 
 #define KSTR_LEN 8
 
-const char *fftwf_rdft_kind_str(rdft_kind kind)
+const char *X(rdft_kind_str)(rdft_kind kind)
 {
      static const char kstr[][KSTR_LEN] = {
 	  "r2hc", "r2hc01", "r2hc10", "r2hc11",
@@ -74,9 +95,9 @@ static void print(const problem *ego_, printer *p)
 {
      const problem_rdft *ego = (const problem_rdft *) ego_;
      int i;
-     p->print(p, "(rdft %d %D %T %T",
-	      fftwf_alignment_of(ego->I),
-	      (INT)(ego->O - ego->I),
+     p->print(p, "(rdft %d %D %T %T", 
+	      X(alignment_of)(ego->I),
+	      (INT)(ego->O - ego->I), 
 	      ego->sz,
 	      ego->vecsz);
      for (i = 0; i < ego->sz->rnk; ++i)
@@ -87,9 +108,9 @@ static void print(const problem *ego_, printer *p)
 static void zero(const problem *ego_)
 {
      const problem_rdft *ego = (const problem_rdft *) ego_;
-     tensor *sz = fftwf_tensor_append(ego->vecsz, ego->sz);
-     fftwf_rdft_zerotens(sz, UNTAINT(ego->I));
-     fftwf_tensor_destroy(sz);
+     tensor *sz = X(tensor_append)(ego->vecsz, ego->sz);
+     X(rdft_zerotens)(sz, UNTAINT(ego->I));
+     X(tensor_destroy)(sz);
 }
 
 static const problem_adt padt =
@@ -111,22 +132,22 @@ static int nontrivial(const iodim *d, rdft_kind kind)
 	     || (REODFT_KINDP(kind) && kind != REDFT01 && kind != RODFT01));
 }
 
-problem *fftwf_mkproblem_rdft(const tensor *sz, const tensor *vecsz,
-			   float *I, float *O, const rdft_kind *kind)
+problem *X(mkproblem_rdft)(const tensor *sz, const tensor *vecsz,
+			   R *I, R *O, const rdft_kind *kind)
 {
      problem_rdft *ego;
      int rnk = sz->rnk;
      int i;
 
-     A(fftwf_tensor_kosherp(sz));
-     A(fftwf_tensor_kosherp(vecsz));
+     A(X(tensor_kosherp)(sz));
+     A(X(tensor_kosherp)(vecsz));
      A(FINITE_RNK(sz->rnk));
 
      if (UNTAINT(I) == UNTAINT(O))
 	  I = O = JOIN_TAINT(I, O);
 
-     if (I == O && !fftwf_tensor_inplace_locations(sz, vecsz))
-	  return fftwf_mkproblem_unsolvable();
+     if (I == O && !X(tensor_inplace_locations)(sz, vecsz))
+	  return X(mkproblem_unsolvable)();
 
      for (i = rnk = 0; i < sz->rnk; ++i) {
           A(sz->dims[i].n > 0);
@@ -135,7 +156,7 @@ problem *fftwf_mkproblem_rdft(const tensor *sz, const tensor *vecsz,
      }
 
 #if defined(STRUCT_HACK_KR)
-     ego = (problem_rdft *) fftwf_mkproblem(sizeof(problem_rdft)
+     ego = (problem_rdft *) X(mkproblem)(sizeof(problem_rdft)
 					 + sizeof(rdft_kind)
 					 * (rnk > 0 ? rnk - 1 : 0), &padt);
 #elif defined(STRUCT_HACK_C99)
@@ -148,7 +169,7 @@ problem *fftwf_mkproblem_rdft(const tensor *sz, const tensor *vecsz,
 
      /* do compression and sorting as in X(tensor_compress), but take
 	transform kind into account (sigh) */
-     ego->sz = fftwf_mktensor(rnk);
+     ego->sz = X(mktensor)(rnk);
      for (i = rnk = 0; i < sz->rnk; ++i) {
           if (nontrivial(sz->dims + i, kind[i])) {
 	       ego->kind[rnk] = kind[i];
@@ -158,7 +179,7 @@ problem *fftwf_mkproblem_rdft(const tensor *sz, const tensor *vecsz,
      for (i = 0; i + 1 < rnk; ++i) {
 	  int j;
 	  for (j = i + 1; j < rnk; ++j)
-	       if (fftwf_dimcmp(ego->sz->dims + i, ego->sz->dims + j) > 0) {
+	       if (X(dimcmp)(ego->sz->dims + i, ego->sz->dims + j) > 0) {
 		    iodim dswap;
 		    rdft_kind kswap;
 		    dswap = ego->sz->dims[i];
@@ -176,7 +197,7 @@ problem *fftwf_mkproblem_rdft(const tensor *sz, const tensor *vecsz,
 					  || ego->kind[i] == HC2R))
 	       ego->kind[i] = R2HC; /* size-2 transforms are equivalent */
 
-     ego->vecsz = fftwf_tensor_compress_contiguous(vecsz);
+     ego->vecsz = X(tensor_compress_contiguous)(vecsz);
      ego->I = I;
      ego->O = O;
 
@@ -186,32 +207,32 @@ problem *fftwf_mkproblem_rdft(const tensor *sz, const tensor *vecsz,
 }
 
 /* Same as X(mkproblem_rdft), but also destroy input tensors. */
-problem *fftwf_mkproblem_rdft_d(tensor *sz, tensor *vecsz,
-			     float *I, float *O, const rdft_kind *kind)
+problem *X(mkproblem_rdft_d)(tensor *sz, tensor *vecsz,
+			     R *I, R *O, const rdft_kind *kind)
 {
-     problem *p = fftwf_mkproblem_rdft(sz, vecsz, I, O, kind);
-     fftwf_tensor_destroy2(vecsz, sz);
+     problem *p = X(mkproblem_rdft)(sz, vecsz, I, O, kind);
+     X(tensor_destroy2)(vecsz, sz);
      return p;
 }
 
 /* As above, but for rnk <= 1 only and takes a scalar kind parameter */
-problem *fftwf_mkproblem_rdft_1(const tensor *sz, const tensor *vecsz,
-			     float *I, float *O, rdft_kind kind)
+problem *X(mkproblem_rdft_1)(const tensor *sz, const tensor *vecsz,
+			     R *I, R *O, rdft_kind kind)
 {
      A(sz->rnk <= 1);
-     return fftwf_mkproblem_rdft(sz, vecsz, I, O, &kind);
+     return X(mkproblem_rdft)(sz, vecsz, I, O, &kind);
 }
 
-problem *fftwf_mkproblem_rdft_1_d(tensor *sz, tensor *vecsz,
-			       float*I, float *O, rdft_kind kind)
+problem *X(mkproblem_rdft_1_d)(tensor *sz, tensor *vecsz,
+			       R *I, R *O, rdft_kind kind)
 {
      A(sz->rnk <= 1);
-     return fftwf_mkproblem_rdft_d(sz, vecsz, I, O, &kind);
+     return X(mkproblem_rdft_d)(sz, vecsz, I, O, &kind);
 }
 
 /* create a zero-dimensional problem */
-problem *fftwf_mkproblem_rdft_0_d(tensor *vecsz, float *I, float *O)
+problem *X(mkproblem_rdft_0_d)(tensor *vecsz, R *I, R *O)
 {
-     return fftwf_mkproblem_rdft_d(fftwf_mktensor_0d(), vecsz, I, O,
+     return X(mkproblem_rdft_d)(X(mktensor_0d)(), vecsz, I, O, 
 				(const rdft_kind *)0);
 }

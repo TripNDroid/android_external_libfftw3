@@ -1,6 +1,27 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
 #include "ifftw.h"
 
-INT fftwf_tensor_max_index(const tensor *sz)
+INT X(tensor_max_index)(const tensor *sz)
 {
      int i;
      INT ni = 0, no = 0;
@@ -8,10 +29,10 @@ INT fftwf_tensor_max_index(const tensor *sz)
      A(FINITE_RNK(sz->rnk));
      for (i = 0; i < sz->rnk; ++i) {
           const iodim *p = sz->dims + i;
-          ni += (p->n - 1) *fftwf_iabs(p->is);
-          no += (p->n - 1) *fftwf_iabs(p->os);
+          ni += (p->n - 1) * X(iabs)(p->is);
+          no += (p->n - 1) * X(iabs)(p->os);
      }
-     return fftwf_imax(ni, no);
+     return X(imax)(ni, no);
 }
 
 #define tensor_min_xstride(sz, xs) {			\
@@ -19,22 +40,22 @@ INT fftwf_tensor_max_index(const tensor *sz)
      if (sz->rnk == 0) return 0;			\
      else {						\
           int i;					\
-          INT s =fftwf_iabs(sz->dims[0].xs);		\
+          INT s = X(iabs)(sz->dims[0].xs);		\
           for (i = 1; i < sz->rnk; ++i)			\
-               s =fftwf_imin(s,fftwf_iabs(sz->dims[i].xs));	\
+               s = X(imin)(s, X(iabs)(sz->dims[i].xs));	\
           return s;					\
      }							\
 }
 
-INT fftwf_tensor_min_istride(const tensor *sz) tensor_min_xstride(sz, is)
-INT fftwf_tensor_min_ostride(const tensor *sz) tensor_min_xstride(sz, os)
+INT X(tensor_min_istride)(const tensor *sz) tensor_min_xstride(sz, is)
+INT X(tensor_min_ostride)(const tensor *sz) tensor_min_xstride(sz, os)
 
-INT fftwf_tensor_min_stride(const tensor *sz)
+INT X(tensor_min_stride)(const tensor *sz)
 {
-     return fftwf_imin(fftwf_tensor_min_istride(sz),fftwf_tensor_min_ostride(sz));
+     return X(imin)(X(tensor_min_istride)(sz), X(tensor_min_ostride)(sz));
 }
 
-int fftwf_tensor_inplace_strides(const tensor *sz)
+int X(tensor_inplace_strides)(const tensor *sz)
 {
      int i;
      A(FINITE_RNK(sz->rnk));
@@ -46,9 +67,9 @@ int fftwf_tensor_inplace_strides(const tensor *sz)
      return 1;
 }
 
-int fftwf_tensor_inplace_strides2(const tensor *a, const tensor *b)
+int X(tensor_inplace_strides2)(const tensor *a, const tensor *b)
 {
-     return fftwf_tensor_inplace_strides(a) && fftwf_tensor_inplace_strides(b);
+     return X(tensor_inplace_strides(a)) && X(tensor_inplace_strides(b));
 }
 
 /* return true (1) iff *any* strides of sz decrease when we
@@ -74,10 +95,10 @@ static int tensor_strides_decrease(const tensor *sz, inplace_kind k)
          || X(tensor_strides_decrease)(sz, vecsz, INPLACE_OS)
          || X(tensor_inplace_strides2)(p->sz, p->vecsz)
    must always be true. */
-int fftwf_tensor_strides_decrease(const tensor *sz, const tensor *vecsz,
+int X(tensor_strides_decrease)(const tensor *sz, const tensor *vecsz,
 			       inplace_kind k)
 {
      return(tensor_strides_decrease(sz, k)
-	    || (fftwf_tensor_inplace_strides(sz)
+	    || (X(tensor_inplace_strides)(sz)
 		&& tensor_strides_decrease(vecsz, k)));
 }

@@ -1,5 +1,25 @@
-#include "rdft.h"
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
 
+
+#include "rdft.h"
 
 typedef struct {
      solver super;
@@ -19,7 +39,7 @@ typedef struct {
    the n loops? */
 
 /* copy halfcomplex array r (contiguous) to complex (strided) array rio/iio. */
-static void hc2c(INT n, float *r, float *rio, float *iio, INT os)
+static void hc2c(INT n, R *r, R *rio, R *iio, INT os)
 {
      INT i;
 
@@ -38,7 +58,7 @@ static void hc2c(INT n, float *r, float *rio, float *iio, INT os)
 }
 
 /* reverse of hc2c */
-static void c2hc(INT n, float *rio, float *iio, INT is, float *r)
+static void c2hc(INT n, R *rio, R *iio, INT is, R *r)
 {
      INT i;
 
@@ -55,14 +75,14 @@ static void c2hc(INT n, float *rio, float *iio, INT is, float *r)
 
 /***************************************************************************/
 
-static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
+static void apply_r2hc(const plan *ego_, R *r0, R *r1, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      plan_rdft *cld = (plan_rdft *) ego->cld;
      INT i, j, vl = ego->vl, nbuf = ego->nbuf, bufdist = ego->bufdist;
      INT n = ego->n;
      INT ivs = ego->ivs, ovs = ego->ovs, os = ego->cs;
-     float *bufs = (float *)MALLOC(sizeof(float) * nbuf * bufdist, BUFFERS);
+     R *bufs = (R *)MALLOC(sizeof(R) * nbuf * bufdist, BUFFERS);
      plan_rdft2 *cldrest;
 
      for (i = nbuf; i <= vl; i += nbuf) {
@@ -75,21 +95,21 @@ static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float 
 	       hc2c(n, bufs + j*bufdist, cr, ci, os);
      }
 
-     fftwf_ifree(bufs);
+     X(ifree)(bufs);
 
      /* Do the remaining transforms, if any: */
      cldrest = (plan_rdft2 *) ego->cldrest;
      cldrest->apply((plan *) cldrest, r0, r1, cr, ci);
 }
 
-static void apply_hc2r(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
+static void apply_hc2r(const plan *ego_, R *r0, R *r1, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      plan_rdft *cld = (plan_rdft *) ego->cld;
      INT i, j, vl = ego->vl, nbuf = ego->nbuf, bufdist = ego->bufdist;
      INT n = ego->n;
      INT ivs = ego->ivs, ovs = ego->ovs, is = ego->cs;
-     float *bufs = (float *)MALLOC(sizeof(float) * nbuf * bufdist, BUFFERS);
+     R *bufs = (R *)MALLOC(sizeof(R) * nbuf * bufdist, BUFFERS);
      plan_rdft2 *cldrest;
 
      for (i = nbuf; i <= vl; i += nbuf) {
@@ -102,7 +122,7 @@ static void apply_hc2r(const plan *ego_, float *r0, float *r1, float *cr, float 
 	  r0 += ovs * nbuf; r1 += ovs * nbuf;
      }
 
-     fftwf_ifree(bufs);
+     X(ifree)(bufs);
 
      /* Do the remaining transforms, if any: */
      cldrest = (plan_rdft2 *) ego->cldrest;
@@ -113,15 +133,15 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
 
-     fftwf_plan_awake(ego->cld, wakefulness);
-     fftwf_plan_awake(ego->cldrest, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
+     X(plan_awake)(ego->cldrest, wakefulness);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cldrest);
-     fftwf_plan_destroy_internal(ego->cld);
+     X(plan_destroy_internal)(ego->cldrest);
+     X(plan_destroy_internal)(ego->cld);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -140,22 +160,22 @@ static INT min_nbuf(const problem_rdft2 *p, INT n, INT vl)
 
      if (p->r0 != p->cr)
 	  return 1;
-     if (fftwf_rdft2_inplace_strides(p, RNK_MINFTY))
+     if (X(rdft2_inplace_strides(p, RNK_MINFTY)))
 	  return 1;
      A(p->vecsz->rnk == 1); /*  rank 0 and MINFTY are inplace */
 
-     fftwf_rdft2_strides(p->kind, p->sz->dims, &is, &os);
-     fftwf_rdft2_strides(p->kind, p->vecsz->dims, &ivs, &ovs);
-
+     X(rdft2_strides)(p->kind, p->sz->dims, &is, &os);
+     X(rdft2_strides)(p->kind, p->vecsz->dims, &ivs, &ovs);
+     
      /* handle one potentially common case: "contiguous" real and
 	complex arrays, which overlap because of the differing sizes. */
-     if (n * fftwf_iabs(is) <= fftwf_iabs(ivs)
-	 && (n/2 + 1) * fftwf_iabs(os) <= fftwf_iabs(ovs)
-	 && ( ((p->cr - p->ci) <= fftwf_iabs(os)) ||
-	      ((p->ci - p->cr) <= fftwf_iabs(os)) )
+     if (n * X(iabs)(is) <= X(iabs)(ivs)
+	 && (n/2 + 1) * X(iabs)(os) <= X(iabs)(ovs)
+	 && ( ((p->cr - p->ci) <= X(iabs)(os)) || 
+	      ((p->ci - p->cr) <= X(iabs)(os)) )
 	 && ivs > 0 && ovs > 0) {
-	  INT vsmin = fftwf_imin(ivs, ovs);
-	  INT vsmax = fftwf_imax(ivs, ovs);
+	  INT vsmin = X(imin)(ivs, ovs);
+	  INT vsmax = X(imax)(ivs, ovs);
 	  return(((vsmax - vsmin) * vl + vsmin - 1) / vsmin);
      }
 
@@ -177,7 +197,7 @@ static int applicable0(const problem *p_, const S *ego, const planner *plnr)
 	    && (2 * (p->r1 - p->r0) ==
 		(((p->kind == R2HC) ? p->sz->dims[0].is : p->sz->dims[0].os)))
 
-	    && !(fftwf_toobig(p->sz->dims[0].n) && CONSERVE_MEMORYP(plnr))
+	    && !(X(toobig)(p->sz->dims[0].n) && CONSERVE_MEMORYP(plnr))
 	  );
 }
 
@@ -192,7 +212,7 @@ static int applicable(const problem *p_, const S *ego, const planner *plnr)
      p = (const problem_rdft2 *) p_;
      if (NO_UGLYP(plnr)) {
 	  if (p->r0 != p->cr) return 0;
-	  if (fftwf_toobig(p->sz->dims[0].n)) return 0;
+	  if (X(toobig)(p->sz->dims[0].n)) return 0;
      }
      return 1;
 }
@@ -204,46 +224,46 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      plan *cld = (plan *) 0;
      plan *cldrest = (plan *) 0;
      const problem_rdft2 *p = (const problem_rdft2 *) p_;
-     float *bufs = (float *) 0;
+     R *bufs = (R *) 0;
      INT nbuf = 0, bufdist, n, vl;
      INT ivs, ovs, rs, id, od;
 
      static const plan_adt padt = {
-	  fftwf_rdft2_solve, awake, print, destroy
+	  X(rdft2_solve), awake, print, destroy
      };
 
      if (!applicable(p_, ego, plnr))
           goto nada;
 
      n = p->sz->dims[0].n;
-     fftwf_tensor_tornk1(p->vecsz, &vl, &ivs, &ovs);
+     X(tensor_tornk1)(p->vecsz, &vl, &ivs, &ovs);
 
-     nbuf = fftwf_imax(fftwf_nbuf(n, vl, 0), min_nbuf(p, n, vl));
-     bufdist = fftwf_bufdist(n, vl);
+     nbuf = X(imax)(X(nbuf)(n, vl, 0), min_nbuf(p, n, vl));
+     bufdist = X(bufdist)(n, vl);
      A(nbuf > 0);
 
      /* initial allocation for the purpose of planning */
-     bufs = (float *) MALLOC(sizeof(float) * nbuf * bufdist, BUFFERS);
+     bufs = (R *) MALLOC(sizeof(R) * nbuf * bufdist, BUFFERS);
 
      id = ivs * (nbuf * (vl / nbuf));
      od = ovs * (nbuf * (vl / nbuf));
 
      if (p->kind == R2HC) {
-	  cld = fftwf_mkplan_f_d(
+	  cld = X(mkplan_f_d)(
 	       plnr,
-	       fftwf_mkproblem_rdft_d(
-		    fftwf_mktensor_1d(n, p->sz->dims[0].is/2, 1),
-		    fftwf_mktensor_1d(nbuf, ivs, bufdist),
+	       X(mkproblem_rdft_d)(
+		    X(mktensor_1d)(n, p->sz->dims[0].is/2, 1),
+		    X(mktensor_1d)(nbuf, ivs, bufdist),
 		    TAINT(p->r0, ivs * nbuf), bufs, &p->kind),
 	       0, 0, (p->r0 == p->cr) ? NO_DESTROY_INPUT : 0);
 	  if (!cld) goto nada;
-	  fftwf_ifree(bufs); bufs = 0;
+	  X(ifree)(bufs); bufs = 0;
 
-	  cldrest = fftwf_mkplan_d(plnr,
-				fftwf_mkproblem_rdft2_d(
-				     fftwf_tensor_copy(p->sz),
-				     fftwf_mktensor_1d(vl % nbuf, ivs, ovs),
-				     p->r0 + id, p->r1 + id,
+	  cldrest = X(mkplan_d)(plnr, 
+				X(mkproblem_rdft2_d)(
+				     X(tensor_copy)(p->sz),
+				     X(mktensor_1d)(vl % nbuf, ivs, ovs),
+				     p->r0 + id, p->r1 + id, 
 				     p->cr + od, p->ci + od,
 				     p->kind));
 	  if (!cldrest) goto nada;
@@ -251,21 +271,21 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 	  pln = MKPLAN_RDFT2(P, &padt, apply_r2hc);
      } else {
 	  A(p->kind == HC2R);
-	  cld = fftwf_mkplan_f_d(
+	  cld = X(mkplan_f_d)(
 	       plnr,
-	       fftwf_mkproblem_rdft_d(
-		    fftwf_mktensor_1d(n, 1, p->sz->dims[0].os/2),
-		    fftwf_mktensor_1d(nbuf, bufdist, ovs),
+	       X(mkproblem_rdft_d)(
+		    X(mktensor_1d)(n, 1, p->sz->dims[0].os/2),
+		    X(mktensor_1d)(nbuf, bufdist, ovs),
 		    bufs, TAINT(p->r0, ovs * nbuf), &p->kind),
 	       0, 0, NO_DESTROY_INPUT); /* always ok to destroy bufs */
 	  if (!cld) goto nada;
-	  fftwf_ifree(bufs); bufs = 0;
+	  X(ifree)(bufs); bufs = 0;
 
-	  cldrest = fftwf_mkplan_d(plnr,
-				fftwf_mkproblem_rdft2_d(
-				     fftwf_tensor_copy(p->sz),
-				     fftwf_mktensor_1d(vl % nbuf, ivs, ovs),
-				     p->r0 + od, p->r1 + od,
+	  cldrest = X(mkplan_d)(plnr, 
+				X(mkproblem_rdft2_d)(
+				     X(tensor_copy)(p->sz),
+				     X(mktensor_1d)(vl % nbuf, ivs, ovs),
+				     p->r0 + od, p->r1 + od, 
 				     p->cr + id, p->ci + id,
 				     p->kind));
 	  if (!cldrest) goto nada;
@@ -278,20 +298,20 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->vl = vl;
      pln->ivs = ivs;
      pln->ovs = ovs;
-     fftwf_rdft2_strides(p->kind, &p->sz->dims[0], &rs, &pln->cs);
+     X(rdft2_strides)(p->kind, &p->sz->dims[0], &rs, &pln->cs);
      pln->nbuf = nbuf;
      pln->bufdist = bufdist;
 
-     fftwf_ops_madd(vl / nbuf, &cld->ops, &cldrest->ops,
+     X(ops_madd)(vl / nbuf, &cld->ops, &cldrest->ops,
 		 &pln->super.super.ops);
      pln->super.super.ops.other += (p->kind == R2HC ? (n + 2) : n) * vl;
 
      return &(pln->super.super);
 
  nada:
-     fftwf_ifree0(bufs);
-     fftwf_plan_destroy_internal(cldrest);
-     fftwf_plan_destroy_internal(cld);
+     X(ifree0)(bufs);
+     X(plan_destroy_internal)(cldrest);
+     X(plan_destroy_internal)(cld);
      return (plan *) 0;
 }
 
@@ -302,7 +322,7 @@ static solver *mksolver(void)
      return &(slv->super);
 }
 
-void fftwf_rdft2_rdft_register(planner *p)
+void X(rdft2_rdft_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }

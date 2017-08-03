@@ -19,44 +19,41 @@
  */
 
 #include "api.h"
-#include "../rdft/rdft.h"
+#include "rdft.h"
 
-fftwf_plan fftwf_plan_many_dft_c2r(int rank, const int *n,	   
-			     int howmany,				   
-			     fftwf_complex *in, const int *inembed,			   
-			     int istride, int idist,			   
-			     float *out, const int *onembed,		   
-			     int ostride, int odist,			   
-			     unsigned flags)
+X(plan) X(plan_many_dft_c2r)(int rank, const int *n,
+			     int howmany,
+			     C *in, const int *inembed,
+			     int istride, int idist,
+			     R *out, const int *onembed,
+			     int ostride, int odist, unsigned flags)
 {
-
-     float *ri, *ii;
+     R *ri, *ii;
      int *nfi, *nfo;
      int inplace;
-     fftwf_plan p;
+     X(plan) p;
 
-     if (!fftwf_many_kosherp (rank, n, howmany)) return 0;
+     if (!X(many_kosherp)(rank, n, howmany)) return 0;
 
      EXTRACT_REIM(FFT_SIGN, in, &ri, &ii);
      inplace = out == ri;
 
      if (!inplace)
 	  flags |= FFTW_DESTROY_INPUT;
-
-     p = fftwf_mkapiplan(
+     p = X(mkapiplan)(
 	  0, flags,
-	  fftwf_mkproblem_rdft2_d_3pointers(
-	       fftwf_mktensor_rowmajor(
-		    rank, n,
-		    fftwf_rdft2_pad(rank, n, inembed, inplace, 0, &nfi),
-		    fftwf_rdft2_pad(rank, n, onembed, inplace, 1, &nfo),
-		    istride, 2 * ostride),
-	       fftwf_mktensor_1d(howmany, idist, 2 * odist),
+	  X(mkproblem_rdft2_d_3pointers)(
+	       X(mktensor_rowmajor)(
+		    rank, n, 
+		    X(rdft2_pad)(rank, n, inembed, inplace, 1, &nfi),
+		    X(rdft2_pad)(rank, n, onembed, inplace, 0, &nfo),
+		    2 * istride, ostride),
+	       X(mktensor_1d)(howmany, 2 * idist, odist),
 	       TAINT_UNALIGNED(out, flags),
 	       TAINT_UNALIGNED(ri, flags), TAINT_UNALIGNED(ii, flags),
 	       HC2R));
 
-     fftwf_ifree0 (nfi);
-     fftwf_ifree0 (nfo);
+     X(ifree0)(nfi);
+     X(ifree0)(nfo);
      return p;
 }

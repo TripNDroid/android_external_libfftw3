@@ -1,10 +1,29 @@
-
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
 
 
 #include "ct.h"
 
-ct_solver *(*fftwf_mksolver_ct_hook)(size_t, INT, int,
+ct_solver *(*X(mksolver_ct_hook))(size_t, INT, int, 
 				  ct_mkinferior, ct_force_vrecursion) = 0;
+
 typedef struct {
      plan_dft super;
      plan *cld;
@@ -12,7 +31,7 @@ typedef struct {
      INT r;
 } P;
 
-static void apply_dit(const plan *ego_, float *ri, float *ii, float *ro, float *io)
+static void apply_dit(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      const P *ego = (const P *) ego_;
      plan_dft *cld;
@@ -25,7 +44,7 @@ static void apply_dit(const plan *ego_, float *ri, float *ii, float *ro, float *
      cldw->apply(ego->cldw, ro, io);
 }
 
-static void apply_dif(const plan *ego_, float *ri, float *ii, float *ro, float *io)
+static void apply_dif(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      const P *ego = (const P *) ego_;
      plan_dft *cld;
@@ -41,15 +60,15 @@ static void apply_dif(const plan *ego_, float *ri, float *ii, float *ro, float *
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cld, wakefulness);
-     fftwf_plan_awake(ego->cldw, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
+     X(plan_awake)(ego->cldw, wakefulness);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cldw);
-     fftwf_plan_destroy_internal(ego->cld);
+     X(plan_destroy_internal)(ego->cldw);
+     X(plan_destroy_internal)(ego->cld);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -74,12 +93,12 @@ static int applicable0(const ct_solver *ego, const problem *p_, planner *plnr)
 		 p->ri == p->ro ||
 		 !NO_DESTROY_INPUTP(plnr))
 
-	     && ((r = fftwf_choose_radix(ego->r, p->sz->dims[0].n)) > 1)
+	     && ((r = X(choose_radix)(ego->r, p->sz->dims[0].n)) > 1)
 	     && p->sz->dims[0].n > r);
 }
 
 
-int fftwf_ct_applicable(const ct_solver *ego, const problem *p_, planner *plnr)
+int X(ct_applicable)(const ct_solver *ego, const problem *p_, planner *plnr)
 {
      const problem_dft *p;
 
@@ -107,19 +126,19 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      iodim *d;
 
      static const plan_adt padt = {
-	  fftwf_dft_solve, awake, print, destroy
+	  X(dft_solve), awake, print, destroy
      };
 
-     if ((NO_NONTHREADEDP(plnr)) || !fftwf_ct_applicable(ego, p_, plnr))
+     if ((NO_NONTHREADEDP(plnr)) || !X(ct_applicable)(ego, p_, plnr))
           return (plan *) 0;
 
      p = (const problem_dft *) p_;
      d = p->sz->dims;
      n = d[0].n;
-     r = fftwf_choose_radix(ego->r, n);
+     r = X(choose_radix)(ego->r, n);
      m = n / r;
 
-     fftwf_tensor_tornk1(p->vecsz, &v, &ivs, &ovs);
+     X(tensor_tornk1)(p->vecsz, &v, &ivs, &ovs);
 
      switch (ego->dec) {
 	 case DECDIT:
@@ -132,10 +151,10 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 				 p->ro, p->io, plnr);
 	      if (!cldw) goto nada;
 
-	      cld = fftwf_mkplan_d(plnr,
-				fftwf_mkproblem_dft_d(
-				     fftwf_mktensor_1d(m, r * d[0].is, d[0].os),
-				     fftwf_mktensor_2d(r, d[0].is, m * d[0].os,
+	      cld = X(mkplan_d)(plnr,
+				X(mkproblem_dft_d)(
+				     X(mktensor_1d)(m, r * d[0].is, d[0].os),
+				     X(mktensor_2d)(r, d[0].is, m * d[0].os,
 						    v, ivs, ovs),
 				     p->ri, p->ii, p->ro, p->io)
 		   );
@@ -180,10 +199,10 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 				 p->ri, p->ii, plnr);
 	      if (!cldw) goto nada;
 
-	      cld = fftwf_mkplan_d(plnr,
-				fftwf_mkproblem_dft_d(
-				     fftwf_mktensor_1d(m, d[0].is, r * d[0].os),
-				     fftwf_mktensor_2d(r, cors, d[0].os,
+	      cld = X(mkplan_d)(plnr,
+				X(mkproblem_dft_d)(
+				     X(mktensor_1d)(m, d[0].is, r * d[0].os),
+				     X(mktensor_2d)(r, cors, d[0].os,
 						    v, covs, ovs),
 				     p->ri, p->ii, p->ro, p->io)
 		   );
@@ -200,24 +219,24 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->cld = cld;
      pln->cldw = cldw;
      pln->r = r;
-     fftwf_ops_add(&cld->ops, &cldw->ops, &pln->super.super.ops);
+     X(ops_add)(&cld->ops, &cldw->ops, &pln->super.super.ops);
 
      /* inherit could_prune_now_p attribute from cldw */
      pln->super.super.could_prune_now_p = cldw->could_prune_now_p;
      return &(pln->super.super);
 
  nada:
-     fftwf_plan_destroy_internal(cldw);
-     fftwf_plan_destroy_internal(cld);
+     X(plan_destroy_internal)(cldw);
+     X(plan_destroy_internal)(cld);
      return (plan *) 0;
 }
 
-ct_solver *fftwf_mksolver_ct(size_t size, INT r, int dec,
+ct_solver *X(mksolver_ct)(size_t size, INT r, int dec, 
 			  ct_mkinferior mkcldw,
 			  ct_force_vrecursion force_vrecursionp)
 {
      static const solver_adt sadt = { PROBLEM_DFT, mkplan, 0 };
-     ct_solver *slv = (ct_solver *)fftwf_mksolver(size, &sadt);
+     ct_solver *slv = (ct_solver *)X(mksolver)(size, &sadt);
      slv->r = r;
      slv->dec = dec;
      slv->mkcldw = mkcldw;
@@ -225,11 +244,11 @@ ct_solver *fftwf_mksolver_ct(size_t size, INT r, int dec,
      return slv;
 }
 
-plan *fftwf_mkplan_dftw(size_t size, const plan_adt *adt, dftwapply apply)
+plan *X(mkplan_dftw)(size_t size, const plan_adt *adt, dftwapply apply)
 {
      plan_dftw *ego;
 
-     ego = (plan_dftw *) fftwf_mkplan(size, adt);
+     ego = (plan_dftw *) X(mkplan)(size, adt);
      ego->apply = apply;
 
      return &(ego->super);

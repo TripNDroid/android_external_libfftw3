@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
 
 #include "rdft.h"
 
@@ -7,12 +27,12 @@
    because rdft transforms have the unfortunate property of
    differing input and output sizes.   This routine is not
    exhaustive; we only return 1 for the most common case.  */
-int fftwf_rdft2_inplace_strides(const problem_rdft2 *p, int vdim)
+int X(rdft2_inplace_strides)(const problem_rdft2 *p, int vdim)
 {
      INT N, Nc;
      INT rs, cs;
      int i;
-
+     
      for (i = 0; i + 1 < p->sz->rnk; ++i)
 	  if (p->sz->dims[i].is != p->sz->dims[i].os)
 	       return 0;
@@ -21,7 +41,7 @@ int fftwf_rdft2_inplace_strides(const problem_rdft2 *p, int vdim)
 	  return 1;
      if (!FINITE_RNK(vdim)) { /* check all vector dimensions */
 	  for (vdim = 0; vdim < p->vecsz->rnk; ++vdim)
-	       if (!fftwf_rdft2_inplace_strides(p, vdim))
+	       if (!X(rdft2_inplace_strides)(p, vdim))
 		    return 0;
 	  return 1;
      }
@@ -30,15 +50,15 @@ int fftwf_rdft2_inplace_strides(const problem_rdft2 *p, int vdim)
      if (p->sz->rnk == 0)
 	  return(p->vecsz->dims[vdim].is == p->vecsz->dims[vdim].os);
 
-     N = fftwf_tensor_sz(p->sz);
+     N = X(tensor_sz)(p->sz);
      Nc = (N / p->sz->dims[p->sz->rnk-1].n) *
 	  (p->sz->dims[p->sz->rnk-1].n/2 + 1);
-     fftwf_rdft2_strides(p->kind, p->sz->dims + p->sz->rnk - 1, &rs, &cs);
+     X(rdft2_strides)(p->kind, p->sz->dims + p->sz->rnk - 1, &rs, &cs);
 
      /* the factor of 2 comes from the fact that RS is the stride
 	of p->r0 and p->r1, which is twice as large as the strides
 	in the r2r case */
      return(p->vecsz->dims[vdim].is == p->vecsz->dims[vdim].os
-	    && (fftwf_iabs(2 * p->vecsz->dims[vdim].os)
-		>= fftwf_imax(2 * Nc * fftwf_iabs(cs), N * fftwf_iabs(rs))));
+	    && (X(iabs)(2 * p->vecsz->dims[vdim].os)
+		>= X(imax)(2 * Nc * X(iabs)(cs), N * X(iabs)(rs))));
 }

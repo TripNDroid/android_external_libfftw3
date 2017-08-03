@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -43,28 +43,28 @@ typedef struct {
 /*************************************************************
   Nonbuffered code
  *************************************************************/
-static void apply(const plan *ego_, float *rio, float *iio)
+static void apply(const plan *ego_, R *rio, R *iio)
 {
      const P *ego = (const P *) ego_;
      INT i;
      ASSERT_ALIGNED_DOUBLE;
      for (i = 0; i < ego->v; ++i, rio += ego->vs, iio += ego->vs) {
 	  INT  mb = ego->mb, ms = ego->ms;
-	  ego->k(rio + mb*ms, iio + mb*ms, ego->td->W,
+	  ego->k(rio + mb*ms, iio + mb*ms, ego->td->W, 
 		 ego->rs, mb, ego->me, ms);
      }
 }
 
-static void apply_extra_iter(const plan *ego_, float *rio, float *iio)
+static void apply_extra_iter(const plan *ego_, R *rio, R *iio)
 {
      const P *ego = (const P *) ego_;
      INT i, v = ego->v, vs = ego->vs;
      INT mb = ego->mb, me = ego->me, mm = me - 1, ms = ego->ms;
      ASSERT_ALIGNED_DOUBLE;
      for (i = 0; i < v; ++i, rio += vs, iio += vs) {
-	  ego->k(rio + mb*ms, iio + mb*ms, ego->td->W,
+	  ego->k(rio + mb*ms, iio + mb*ms, ego->td->W, 
 		 ego->rs, mb, mm, ms);
-	  ego->k(rio + mm*ms, iio + mm*ms, ego->td->W,
+	  ego->k(rio + mm*ms, iio + mm*ms, ego->td->W, 
 		 ego->rs, mm, mm+2, 0);
      }
 }
@@ -72,17 +72,17 @@ static void apply_extra_iter(const plan *ego_, float *rio, float *iio)
 /*************************************************************
   Buffered code
  *************************************************************/
-static void dobatch(const P *ego, float *rA, float *iA, INT mb, INT me, float *buf)
+static void dobatch(const P *ego, R *rA, R *iA, INT mb, INT me, R *buf)
 {
      INT brs = WS(ego->brs, 1);
      INT rs = WS(ego->rs, 1);
      INT ms = ego->ms;
 
-     fftwf_cpy2d_pair_ci(rA + mb*ms, iA + mb*ms, buf, buf + 1,
+     X(cpy2d_pair_ci)(rA + mb*ms, iA + mb*ms, buf, buf + 1,
 		      ego->r, rs, brs,
 		      me - mb, ms, 2);
      ego->k(buf, buf + 1, ego->td->W, ego->brs, mb, me, 2);
-     fftwf_cpy2d_pair_co(buf, buf + 1, rA + mb*ms, iA + mb*ms,
+     X(cpy2d_pair_co)(buf, buf + 1, rA + mb*ms, iA + mb*ms,
 		      ego->r, brs, rs,
 		      me - mb, 2, ms);
 }
@@ -98,24 +98,25 @@ static INT compute_batchsize(INT radix)
      return (radix + 2);
 }
 
-static void apply_buf(const plan *ego_, float *rio, float *iio)
+static void apply_buf(const plan *ego_, R *rio, R *iio)
 {
      const P *ego = (const P *) ego_;
      INT i, j, v = ego->v, r = ego->r;
      INT batchsz = compute_batchsize(r);
-     float *buf;
+     R *buf;
      INT mb = ego->mb, me = ego->me;
+     size_t bufsz = r * batchsz * 2 * sizeof(R);
 
-     STACK_MALLOC(float *, buf, r * batchsz * 2 * sizeof(float));
+     BUF_ALLOC(R *, buf, bufsz);
 
      for (i = 0; i < v; ++i, rio += ego->vs, iio += ego->vs) {
-	  for (j = mb; j + batchsz < me; j += batchsz)
+	  for (j = mb; j + batchsz < me; j += batchsz) 
 	       dobatch(ego, rio, iio, j, j + batchsz, buf);
 
 	  dobatch(ego, rio, iio, j, me, buf);
      }
 
-     STACK_FREE(buf);
+     BUF_FREE(buf, bufsz);
 }
 
 /*************************************************************
@@ -125,15 +126,15 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
 
-     fftwf_twiddle_awake(wakefulness, &ego->td, ego->slv->desc->tw,
+     X(twiddle_awake)(wakefulness, &ego->td, ego->slv->desc->tw,
 		      ego->r * ego->m, ego->r, ego->m + ego->extra_iter);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_stride_destroy(ego->brs);
-     fftwf_stride_destroy(ego->rs);
+     X(stride_destroy)(ego->brs);
+     X(stride_destroy)(ego->rs);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -145,10 +146,10 @@ static void print(const plan *ego_, printer *p)
      if (slv->bufferedp)
 	  p->print(p, "(dftw-directbuf/%D-%D/%D%v \"%s\")",
 		   compute_batchsize(ego->r), ego->r,
-		   fftwf_twiddle_length(ego->r, e->tw), ego->v, e->nam);
+		   X(twiddle_length)(ego->r, e->tw), ego->v, e->nam);
      else
 	  p->print(p, "(dftw-direct-%D/%D%v \"%s\")",
-		   ego->r, fftwf_twiddle_length(ego->r, e->tw), ego->v, e->nam);
+		   ego->r, X(twiddle_length)(ego->r, e->tw), ego->v, e->nam);
 }
 
 static int applicable0(const S *ego,
@@ -156,7 +157,7 @@ static int applicable0(const S *ego,
 		       INT m, INT ms,
 		       INT v, INT ivs, INT ovs,
 		       INT mb, INT me,
-		       float *rio, float *iio,
+		       R *rio, R *iio,
 		       const planner *plnr, INT *extra_iter)
 {
      const ct_desc *e = ego->desc;
@@ -165,7 +166,7 @@ static int applicable0(const S *ego,
      return (
 	  1
 	  && r == e->radix
-	  && irs == ors /* in-place along float */
+	  && irs == ors /* in-place along R */
 	  && ivs == ovs /* in-place along V */
 
 	  /* check for alignment/vector length restrictions */
@@ -195,7 +196,7 @@ static int applicable0_buf(const S *ego,
 			   INT m, INT ms,
 			   INT v, INT ivs, INT ovs,
 			   INT mb, INT me,
-			   float *rio, float *iio,
+			   R *rio, R *iio,
 			   const planner *plnr)
 {
      const ct_desc *e = ego->desc;
@@ -205,15 +206,15 @@ static int applicable0_buf(const S *ego,
      return (
 	  1
 	  && r == e->radix
-	  && irs == ors /* in-place along float */
+	  && irs == ors /* in-place along R */
 	  && ivs == ovs /* in-place along V */
 
 	  /* check for alignment/vector length restrictions, both for
 	     batchsize and for the remainder */
 	  && (batchsz = compute_batchsize(r), 1)
-	  && (e->genus->okp(e, 0, ((const float *)0) + 1, 2 * batchsz, 0,
+	  && (e->genus->okp(e, 0, ((const R *)0) + 1, 2 * batchsz, 0,
 			    m, mb, mb + batchsz, 2, plnr))
-	  && (e->genus->okp(e, 0, ((const float *)0) + 1, 2 * batchsz, 0,
+	  && (e->genus->okp(e, 0, ((const R *)0) + 1, 2 * batchsz, 0,
 			    m, mb, me, 2, plnr))
 	  );
 }
@@ -223,7 +224,7 @@ static int applicable(const S *ego,
 		      INT m, INT ms,
 		      INT v, INT ivs, INT ovs,
 		      INT mb, INT me,
-		      float *rio, float *iio,
+		      R *rio, R *iio,
 		      const planner *plnr, INT *extra_iter)
 {
      if (ego->bufferedp) {
@@ -239,7 +240,7 @@ static int applicable(const S *ego,
 	       return 0;
      }
 
-     if (NO_UGLYP(plnr) && fftwf_ct_uglyp((ego->bufferedp? (INT)512 : (INT)16),
+     if (NO_UGLYP(plnr) && X(ct_uglyp)((ego->bufferedp? (INT)512 : (INT)16),
 				       v, m * r, r))
 	  return 0;
 
@@ -254,7 +255,7 @@ static plan *mkcldw(const ct_solver *ego_,
 		    INT m, INT ms,
 		    INT v, INT ivs, INT ovs,
 		    INT mstart, INT mcount,
-		    float *rio, float *iio,
+		    R *rio, R *iio,
 		    planner *plnr)
 {
      const S *ego = (const S *) ego_;
@@ -279,7 +280,7 @@ static plan *mkcldw(const ct_solver *ego_,
      }
 
      pln->k = ego->k;
-     pln->rs = fftwf_mkstride(r, irs);
+     pln->rs = X(mkstride)(r, irs);
      pln->td = 0;
      pln->r = r;
      pln->m = m;
@@ -289,11 +290,11 @@ static plan *mkcldw(const ct_solver *ego_,
      pln->mb = mstart;
      pln->me = mstart + mcount;
      pln->slv = ego;
-     pln->brs = fftwf_mkstride(r, 2 * compute_batchsize(r));
+     pln->brs = X(mkstride)(r, 2 * compute_batchsize(r));
      pln->extra_iter = extra_iter;
 
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(v * (mcount/e->genus->vl), &e->ops, &pln->super.super.ops);
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(v * (mcount/e->genus->vl), &e->ops, &pln->super.super.ops);
 
      if (ego->bufferedp) {
 	  /* 8 load/stores * N * V */
@@ -308,13 +309,13 @@ static plan *mkcldw(const ct_solver *ego_,
 static void regone(planner *plnr, kdftw codelet,
 		   const ct_desc *desc, int dec, int bufferedp)
 {
-     S *slv = (S *)fftwf_mksolver_ct(sizeof(S), desc->radix, dec, mkcldw, 0);
+     S *slv = (S *)X(mksolver_ct)(sizeof(S), desc->radix, dec, mkcldw, 0);
      slv->k = codelet;
      slv->desc = desc;
      slv->bufferedp = bufferedp;
      REGISTER_SOLVER(plnr, &(slv->super.super));
-     if (fftwf_mksolver_ct_hook) {
-	  slv = (S *)fftwf_mksolver_ct_hook(sizeof(S), desc->radix,
+     if (X(mksolver_ct_hook)) {
+	  slv = (S *)X(mksolver_ct_hook)(sizeof(S), desc->radix,
 					 dec, mkcldw, 0);
 	  slv->k = codelet;
 	  slv->desc = desc;
@@ -323,7 +324,7 @@ static void regone(planner *plnr, kdftw codelet,
      }
 }
 
-void fftwf_regsolver_ct_directw(planner *plnr, kdftw codelet,
+void X(regsolver_ct_directw)(planner *plnr, kdftw codelet,
 			     const ct_desc *desc, int dec)
 {
      regone(plnr, codelet, desc, dec, /* bufferedp */ 0);

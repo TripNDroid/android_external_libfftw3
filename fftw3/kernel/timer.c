@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
 #include "ifftw.h"
 
 #ifdef HAVE_UNISTD_H
@@ -13,7 +34,7 @@
 #endif
 
 /* the following code is disabled for now, because it seems to
-   require that we #include <windows.h> in ifftw.h to
+   require that we #include <windows.h> in ifftw.h to 
    typedef LARGE_INTEGER crude_time, and this pulls in the whole
    Windows universe and leads to namespace conflicts (unless
    we did some hack like assuming sizeof(LARGE_INTEGER) == sizeof(long long).
@@ -39,7 +60,7 @@ static double elapsed_since(crude_time t0)
 #  define TIME_MIN_SEC 1.0e-2
 
 #elif defined(HAVE_GETTIMEOFDAY)
-crude_time fftwf_get_crude_time(void)
+crude_time X(get_crude_time)(void)
 {
      crude_time tv;
      gettimeofday(&tv, 0);
@@ -56,7 +77,7 @@ static double elapsed_since(crude_time t0)
      return elapsed_sec(t1, t0);
 }
 
-#  define TIME_MIN_SEC 1.0e-2 /* from fftw2 */
+#  define TIME_MIN_SEC 1.0e-3
 
 #else /* !HAVE_GETTIMEOFDAY */
 
@@ -77,7 +98,7 @@ static double elapsed_since(crude_time t0)
 
 #endif /* !HAVE_GETTIMEOFDAY */
 
-double fftwf_elapsed_since(const planner *plnr, const problem *p, crude_time t0)
+double X(elapsed_since)(const planner *plnr, const problem *p, crude_time t0)
 {
      double t = elapsed_since(t0);
      if (plnr->cost_hook)
@@ -111,32 +132,32 @@ typedef crude_time ticks;
        int i;
 
        t0 = getticks();
-       for (i = 0; i < iter; ++i)
+       for (i = 0; i < iter; ++i) 
 	    pln->adt->solve(pln, p);
        t1 = getticks();
        return elapsed(t1, t0);
   }
 
 
-  double fftwf_measure_execution_time(const planner *plnr,
+  double X(measure_execution_time)(const planner *plnr, 
 				   plan *pln, const problem *p)
   {
        int iter;
        int repeat;
 
-       fftwf_plan_awake(pln, AWAKE_ZERO);
+       X(plan_awake)(pln, AWAKE_ZERO);
        p->adt->zero(p);
 
   start_over:
        for (iter = 1; iter; iter *= 2) {
 	    double tmin = 0;
 	    int first = 1;
-	    crude_time begin = fftwf_get_crude_time();
+	    crude_time begin = X(get_crude_time)();
 
 	    /* repeat the measurement TIME_REPEAT times */
 	    for (repeat = 0; repeat < TIME_REPEAT; ++repeat) {
 		 double t = measure(pln, p, iter);
-
+		 
 		 if (plnr->cost_hook)
 		      t = plnr->cost_hook(p, t, COST_MAX);
 		 if (t < 0)
@@ -147,12 +168,12 @@ typedef crude_time ticks;
 		 first = 0;
 
 		 /* do not run for too long */
-		 if (fftwf_elapsed_since(plnr, p, begin) > FFTW_TIME_LIMIT)
+		 if (X(elapsed_since)(plnr, p, begin) > FFTW_TIME_LIMIT)
 		      break;
 	    }
 
 	    if (tmin >= TIME_MIN) {
-		 fftwf_plan_awake(pln, SLEEPY);
+		 X(plan_awake)(pln, SLEEPY);
 		 return tmin / (double) iter;
 	    }
        }
@@ -161,7 +182,7 @@ typedef crude_time ticks;
 
 #else /* no cycle counter */
 
-  double X(measure_execution_time)(const planner *plnr,
+  double X(measure_execution_time)(const planner *plnr, 
 				   plan *pln, const problem *p)
   {
        UNUSED(plnr);

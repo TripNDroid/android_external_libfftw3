@@ -1,3 +1,31 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+/* 
+   independent implementation of Ron Rivest's MD5 message-digest
+   algorithm, based on rfc 1321.
+
+   Optimized for small code size, not speed.  Works as long as
+   sizeof(md5uint) >= 4.
+*/
+
 #include "ifftw.h"
 
 /* sintab[i] = 4294967296.0 * abs(sin((double)(i + 1))) */
@@ -18,11 +46,11 @@ static const md5uint sintab[64] = {
      0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
      0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1,
      0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
-};
+}; 
 
 /* see rfc 1321 section 3.4 */
 static const struct roundtab {
-     char k;
+     char k; 
      char s;
 } roundtab[64] = {
      {  0,  7}, {  1, 12}, {  2, 17}, {  3, 22},
@@ -79,7 +107,7 @@ static void doblock(md5sig state, const unsigned char *data)
 }
 
 
-void fftwf_md5begin(md5 *p)
+void X(md5begin)(md5 *p)
 {
      p->s[0] = 0x67452301;
      p->s[1] = 0xefcdab89;
@@ -88,25 +116,25 @@ void fftwf_md5begin(md5 *p)
      p->l = 0;
 }
 
-void fftwf_md5putc(md5 *p, unsigned char c)
+void X(md5putc)(md5 *p, unsigned char c)
 {
      p->c[p->l % 64] = c;
      if (((++p->l) % 64) == 0) doblock(p->s, p->c);
 }
 
-void fftwf_md5end(md5 *p)
+void X(md5end)(md5 *p)
 {
      unsigned l, i;
 
      l = 8 * p->l; /* length before padding, in bits */
 
      /* rfc 1321 section 3.1: padding */
-     fftwf_md5putc(p, 0x80);
-     while ((p->l % 64) != 56) fftwf_md5putc(p, 0x00);
+     X(md5putc)(p, 0x80);
+     while ((p->l % 64) != 56) X(md5putc)(p, 0x00);
 
      /* rfc 1321 section 3.2: length (little endian) */
      for (i = 0; i < 8; ++i) {
-	  fftwf_md5putc(p, l & 0xFF);
+	  X(md5putc)(p, l & 0xFF);
 	  l = l >> 8;
      }
 

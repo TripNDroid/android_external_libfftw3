@@ -1,3 +1,26 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
+/* Twiddle manipulation */
+
 #include "ifftw.h"
 #include <math.h>
 
@@ -41,14 +64,14 @@ static int equal_instr(const tw_instr *p, const tw_instr *q)
      A(0 /* can't happen */);
 }
 
-static int ok_twid(const twid *t,
+static int ok_twid(const twid *t, 
 		   enum wakefulness wakefulness,
 		   const tw_instr *q, INT n, INT r, INT m)
 {
      return (wakefulness == t->wakefulness &&
 	     n == t->n &&
-	     r == t->r &&
-	     m <= t->m &&
+	     r == t->r && 
+	     m <= t->m && 
 	     equal_instr(t->instr, q));
 }
 
@@ -57,8 +80,8 @@ static twid *lookup(enum wakefulness wakefulness,
 {
      twid *p;
 
-     for (p = twlist[hash(n,r)];
-	  p && !ok_twid(p, wakefulness, q, n, r, m);
+     for (p = twlist[hash(n,r)]; 
+	  p && !ok_twid(p, wakefulness, q, n, r, m); 
 	  p = p->cdr)
           ;
      return p;
@@ -92,26 +115,26 @@ static INT twlen0(INT r, const tw_instr *p, INT *vl)
      return ntwiddle;
 }
 
-INT fftwf_twiddle_length(INT r, const tw_instr *p)
+INT X(twiddle_length)(INT r, const tw_instr *p)
 {
      INT vl;
      return twlen0(r, p, &vl);
 }
 
-static float *compute(enum wakefulness wakefulness,
+static R *compute(enum wakefulness wakefulness,
 		  const tw_instr *instr, INT n, INT r, INT m)
 {
      INT ntwiddle, j, vl;
-    float *W, *W0;
+     R *W, *W0;
      const tw_instr *p;
-     triggen *t = fftwf_mktriggen(wakefulness, n);
+     triggen *t = X(mktriggen)(wakefulness, n);
 
      p = instr;
      ntwiddle = twlen0(r, p, &vl);
 
      A(m % vl == 0);
 
-     W0 = W = (float *)MALLOC((ntwiddle * (m / vl)) * sizeof(float), TWIDDLES);
+     W0 = W = (R *)MALLOC((ntwiddle * (m / vl)) * sizeof(R), TWIDDLES);
 
      for (j = 0; j < m; j += vl) {
           for (p = instr; p->op != TW_NEXT; ++p) {
@@ -138,7 +161,7 @@ static float *compute(enum wakefulness wakefulness,
 		   }
 
 		   case TW_COS: {
-			float d[2];
+			R d[2];
 
 			A((j + (INT)p->v) * p->i < n);
 			A((j + (INT)p->v) * p->i > -n);
@@ -148,7 +171,7 @@ static float *compute(enum wakefulness wakefulness,
 		   }
 
 		   case TW_SIN: {
-			float d[2];
+			R d[2];
 
 			A((j + (INT)p->v) * p->i < n);
 			A((j + (INT)p->v) * p->i > -n);
@@ -167,7 +190,7 @@ static float *compute(enum wakefulness wakefulness,
 	  }
      }
 
-     fftwf_triggen_destroy(t);
+     X(triggen_destroy)(t);
      return W0;
 }
 
@@ -208,8 +231,8 @@ static void twiddle_destroy(twid **pp)
 	  for (q = &twlist[hash(p->n, p->r)]; *q; q = &((*q)->cdr)) {
 	       if (*q == p) {
 		    *q = p->cdr;
-		    fftwf_ifree(p->W);
-		    fftwf_ifree(p);
+		    X(ifree)(p->W);
+		    X(ifree)(p);
 		    *pp = 0;
 		    return;
 	       }
@@ -219,11 +242,11 @@ static void twiddle_destroy(twid **pp)
 }
 
 
-void fftwf_twiddle_awake(enum wakefulness wakefulness, twid **pp,
+void X(twiddle_awake)(enum wakefulness wakefulness, twid **pp, 
 		      const tw_instr *instr, INT n, INT r, INT m)
 {
      switch (wakefulness) {
-	 case SLEEPY:
+	 case SLEEPY: 
 	      twiddle_destroy(pp);
 	      break;
 	 default:

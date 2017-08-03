@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -38,7 +38,7 @@ typedef struct {
 } P;
 
 
-static void apply(const plan *ego_, float *rio, float *iio)
+static void apply(const plan *ego_, R *rio, R *iio)
 {
      const P *ego = (const P *) ego_;
      INT mb = ego->mb, ms = ego->ms;
@@ -50,15 +50,15 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
 
-     fftwf_twiddle_awake(wakefulness, &ego->td, ego->slv->desc->tw,
+     X(twiddle_awake)(wakefulness, &ego->td, ego->slv->desc->tw,
 		      ego->r * ego->m, ego->r, ego->m);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_stride_destroy(ego->rs);
-     fftwf_stride_destroy(ego->vs);
+     X(stride_destroy)(ego->rs);
+     X(stride_destroy)(ego->vs);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -68,7 +68,7 @@ static void print(const plan *ego_, printer *p)
      const ct_desc *e = slv->desc;
 
      p->print(p, "(dftw-directsq-%D/%D%v \"%s\")",
-	      ego->r, fftwf_twiddle_length(ego->r, e->tw), ego->v, e->nam);
+	      ego->r, X(twiddle_length)(ego->r, e->tw), ego->v, e->nam);
 }
 
 static int applicable(const S *ego,
@@ -76,7 +76,7 @@ static int applicable(const S *ego,
 		      INT m, INT ms,
 		      INT v, INT ivs, INT ovs,
 		      INT mb, INT me,
-		      float *rio, float *iio,
+		      R *rio, R *iio,
 		      const planner *plnr)
 {
      const ct_desc *e = ego->desc;
@@ -102,7 +102,7 @@ static plan *mkcldw(const ct_solver *ego_,
 		    INT m, INT ms,
 		    INT v, INT ivs, INT ovs,
 		    INT mstart, INT mcount,
-		    float *rio, float *iio,
+		    R *rio, R *iio,
 		    planner *plnr)
 {
      const S *ego = (const S *) ego_;
@@ -122,8 +122,8 @@ static plan *mkcldw(const ct_solver *ego_,
      pln = MKPLAN_DFTW(P, &padt, apply);
 
      pln->k = ego->k;
-     pln->rs = fftwf_mkstride(r, irs);
-     pln->vs = fftwf_mkstride(v, ivs);
+     pln->rs = X(mkstride)(r, irs);
+     pln->vs = X(mkstride)(v, ivs);
      pln->td = 0;
      pln->r = r;
      pln->m = m;
@@ -133,8 +133,8 @@ static plan *mkcldw(const ct_solver *ego_,
      pln->me = mstart + mcount;
      pln->slv = ego;
 
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(mcount/e->genus->vl, &e->ops, &pln->super.super.ops);
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(mcount/e->genus->vl, &e->ops, &pln->super.super.ops);
 
      return &(pln->super.super);
 }
@@ -142,12 +142,12 @@ static plan *mkcldw(const ct_solver *ego_,
 static void regone(planner *plnr, kdftwsq codelet,
 		   const ct_desc *desc, int dec)
 {
-     S *slv = (S *)fftwf_mksolver_ct(sizeof(S), desc->radix, dec, mkcldw, 0);
+     S *slv = (S *)X(mksolver_ct)(sizeof(S), desc->radix, dec, mkcldw, 0);
      slv->k = codelet;
      slv->desc = desc;
      REGISTER_SOLVER(plnr, &(slv->super.super));
-     if (fftwf_mksolver_ct_hook) {
-	  slv = (S *)fftwf_mksolver_ct_hook(sizeof(S), desc->radix, dec,
+     if (X(mksolver_ct_hook)) {
+	  slv = (S *)X(mksolver_ct_hook)(sizeof(S), desc->radix, dec,
 					 mkcldw, 0);
 	  slv->k = codelet;
 	  slv->desc = desc;
@@ -155,7 +155,7 @@ static void regone(planner *plnr, kdftwsq codelet,
      }
 }
 
-void fftwf_regsolver_ct_directwsq(planner *plnr, kdftwsq codelet,
+void X(regsolver_ct_directwsq)(planner *plnr, kdftwsq codelet,
 			       const ct_desc *desc, int dec)
 {
      regone(plnr, codelet, desc, dec+TRANSPOSE);

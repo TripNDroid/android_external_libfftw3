@@ -1,3 +1,36 @@
+/*
+ * Copyright (c) 2005 Matteo Frigo
+ * Copyright (c) 2005 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
+/* Do an R{E,O}DFT00 problem (of an odd length n) recursively via an
+   R{E,O}DFT00 problem and an RDFT problem of half the length.
+
+   This works by "logically" expanding the array to a real-even/odd DFT of
+   length 2n-/+2 and then applying the split-radix algorithm.
+
+   In this way, we can avoid having to pad to twice the length
+   (ala redft00-r2hc-pad), saving a factor of ~2 for n=2^m+/-1,
+   but don't incur the accuracy loss that the "ordinary" algorithm
+   sacrifices (ala redft00-r2hc.c).
+*/
+
 #include "reodft.h"
 
 typedef struct {
@@ -15,17 +48,17 @@ typedef struct {
 } P;
 
 /* redft00 */
-static void apply_e(const plan *ego_, float *I, float *O)
+static void apply_e(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, j, n = ego->n + 1, n2 = (n-1)/2;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W = ego->td->W - 2;
-     float *buf;
+     R *W = ego->td->W - 2;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof (float) * n2, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n2, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  /* do size (n-1)/2 r2hc transform of odd-indexed elements
@@ -88,22 +121,21 @@ static void apply_e(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 /* rodft00 */
-static void apply_o(const plan *ego_, float *I, float *O)
+static void apply_o(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, j, n = ego->n - 1, n2 = (n+1)/2;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W = ego->td->W - 2;
+     R *W = ego->td->W - 2;
+     R *buf;
 
-     float *buf;
-
-     buf = (float *) MALLOC(sizeof (float) * n2, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n2, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  /* do size (n+1)/2 r2hc transform of even-indexed elements
@@ -171,7 +203,7 @@ static void apply_o(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 static void awake(plan *ego_, enum wakefulness wakefulness)
@@ -183,27 +215,27 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
           { TW_NEXT, 1, 0 }
      };
 
-     fftwf_plan_awake(ego->clde, wakefulness);
-     fftwf_plan_awake(ego->cldo, wakefulness);
-     fftwf_twiddle_awake(wakefulness, &ego->td, reodft00e_tw,
+     X(plan_awake)(ego->clde, wakefulness);
+     X(plan_awake)(ego->cldo, wakefulness);
+     X(twiddle_awake)(wakefulness, &ego->td, reodft00e_tw, 
 		      2*ego->n, 1, ego->n/4);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cldo);
-     fftwf_plan_destroy_internal(ego->clde);
+     X(plan_destroy_internal)(ego->cldo);
+     X(plan_destroy_internal)(ego->clde);
 }
 
 static void print(const plan *ego_, printer *p)
 {
      const P *ego = (const P *) ego_;
      if (ego->super.apply == apply_e)
-	  p->print(p, "(redft00e-splitradix-%D%v%(%p%)%(%p%))",
+	  p->print(p, "(redft00e-splitradix-%D%v%(%p%)%(%p%))", 
 		   ego->n + 1, ego->vl, ego->clde, ego->cldo);
      else
-	  p->print(p, "(rodft00e-splitradix-%D%v%(%p%)%(%p%))",
+	  p->print(p, "(rodft00e-splitradix-%D%v%(%p%)%(%p%))", 
 		   ego->n - 1, ego->vl, ego->clde, ego->cldo);
 }
 
@@ -220,7 +252,7 @@ static int applicable0(const solver *ego_, const problem *p_)
 	     && p->sz->dims[0].n % 2  /* odd: 4 divides "logical" DFT */
 	     && (p->I != p->O || p->vecsz->rnk == 0
 		 || p->vecsz->dims[0].is == p->vecsz->dims[0].os)
-	     && (p->kind[0] != RODFT00 || p->I != p->O ||
+	     && (p->kind[0] != RODFT00 || p->I != p->O || 
 		 p->sz->dims[0].is >= p->sz->dims[0].os) /* laziness */
 	  );
 }
@@ -235,13 +267,13 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      P *pln;
      const problem_rdft *p;
      plan *clde, *cldo;
-     float *buf;
+     R *buf;
      INT n, n0;
      opcnt ops;
      int inplace_odd;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr))
@@ -251,15 +283,15 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 
      n = (n0 = p->sz->dims[0].n) + (p->kind[0] == REDFT00 ? (INT)-1 : (INT)1);
      A(n > 0 && n % 2 == 0);
-     buf = (float *) MALLOC(sizeof (float) * (n/2), BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * (n/2), BUFFERS);
 
      inplace_odd = p->kind[0]==RODFT00 && p->I == p->O;
-     clde = fftwf_mkplan_d(plnr, fftwf_mkproblem_rdft_1_d(
-			     fftwf_mktensor_1d(n0-n/2, 2*p->sz->dims[0].is,
+     clde = X(mkplan_d)(plnr, X(mkproblem_rdft_1_d)(
+			     X(mktensor_1d)(n0-n/2, 2*p->sz->dims[0].is, 
 					    inplace_odd ? p->sz->dims[0].is
-					    : p->sz->dims[0].os),
-			     fftwf_mktensor_0d(),
-			     TAINT(p->I
+					    : p->sz->dims[0].os), 
+			     X(mktensor_0d)(), 
+			     TAINT(p->I 
 				   + p->sz->dims[0].is * (p->kind[0]==RODFT00),
 				   p->vecsz->rnk ? p->vecsz->dims[0].is : 0),
 			     TAINT(p->O
@@ -267,15 +299,15 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 				   p->vecsz->rnk ? p->vecsz->dims[0].os : 0),
 			     p->kind[0]));
      if (!clde) {
-	  fftwf_ifree(buf);
+	  X(ifree)(buf);
           return (plan *)0;
      }
 
-     cldo = fftwf_mkplan_d(plnr, fftwf_mkproblem_rdft_1_d(
-			     fftwf_mktensor_1d(n/2, 1, 1),
-			     fftwf_mktensor_0d(),
+     cldo = X(mkplan_d)(plnr, X(mkproblem_rdft_1_d)(
+			     X(mktensor_1d)(n/2, 1, 1), 
+			     X(mktensor_0d)(), 
 			     buf, buf, R2HC));
-     fftwf_ifree(buf);
+     X(ifree)(buf);
      if (!cldo)
           return (plan *)0;
 
@@ -288,9 +320,9 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->cldo = cldo;
      pln->td = 0;
 
-     fftwf_tensor_tornk1(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
-
-     fftwf_ops_zero(&ops);
+     X(tensor_tornk1)(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
+     
+     X(ops_zero)(&ops);
      ops.other = n/2;
      ops.add = (p->kind[0]==REDFT00 ? (INT)2 : (INT)0) +
 	  (n/2-1)/2 * 6 + ((n/2)%2==0) * 2;
@@ -300,10 +332,10 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 	seems to be a lot faster on my machine: */
      ops.other += 256;
 
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &ops, &pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &clde->ops, &pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &cldo->ops, &pln->super.super.ops);
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &ops, &pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &clde->ops, &pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &cldo->ops, &pln->super.super.ops);
 
      return &(pln->super.super);
 }
@@ -316,7 +348,7 @@ static solver *mksolver(void)
      return &(slv->super);
 }
 
-void fftwf_reodft00e_splitradix_register(planner *p)
+void X(reodft00e_splitradix_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }

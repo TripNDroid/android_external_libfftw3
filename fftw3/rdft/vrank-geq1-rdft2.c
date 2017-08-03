@@ -1,4 +1,38 @@
-#include "rdft.h"
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
+
+/* Plans for handling vector transform loops.  These are *just* the
+   loops, and rely on child plans for the actual RDFT2s.
+ 
+   They form a wrapper around solvers that don't have apply functions
+   for non-null vectors.
+ 
+   vrank-geq1-rdft2 plans also recursively handle the case of
+   multi-dimensional vectors, obviating the need for most solvers to
+   deal with this.  We can also play games here, such as reordering
+   the vector loops.
+ 
+   Each vrank-geq1-rdft2 plan reduces the vector rank by 1, picking out a
+   dimension determined by the vecloop_dim field of the solver. */
 
 #include "rdft.h"
 
@@ -18,7 +52,7 @@ typedef struct {
      const S *solver;
 } P;
 
-static void apply(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
+static void apply(const plan *ego_, R *r0, R *r1, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      INT i, vl = ego->vl;
@@ -34,13 +68,13 @@ static void apply(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cld, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld);
+     X(plan_destroy_internal)(ego->cld);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -53,7 +87,7 @@ static void print(const plan *ego_, printer *p)
 
 static int pickdim(const S *ego, const tensor *vecsz, int oop, int *dp)
 {
-     return fftwf_pickdim(ego->vecloop_dim, ego->buddies, ego->nbuddies,
+     return X(pickdim)(ego->vecloop_dim, ego->buddies, ego->nbuddies,
 		       vecsz, oop, dp);
 }
 
@@ -67,7 +101,7 @@ static int applicable0(const solver *ego_, const problem *p_, int *dp)
 	  if (p->r0 != p->cr)
 	       return 1;  /* can always operate out-of-place */
 
-	  return(fftwf_rdft2_inplace_strides(p, *dp));
+	  return(X(rdft2_inplace_strides)(p, *dp));
      }
 
      return 0;
@@ -87,14 +121,14 @@ static int applicable(const solver *ego_, const problem *p_,
      if (NO_UGLYP(plnr)) {
 	  const problem_rdft2 *p = (const problem_rdft2 *) p_;
 	  iodim *d = p->vecsz->dims + *dp;
-
+	       
 	  /* Heuristic: if the transform is multi-dimensional, and the
 	     vector stride is less than the transform size, then we
 	     probably want to use a rank>=2 plan first in order to combine
 	     this vector with the transform-dimension vectors. */
 	  if (p->sz->rnk > 1
-	      && fftwf_imin(fftwf_iabs(d->is), fftwf_iabs(d->os))
-	      < fftwf_rdft2_tensor_max_index(p->sz, p->kind)
+	      && X(imin)(X(iabs)(d->is), X(iabs)(d->os))
+	      < X(rdft2_tensor_max_index)(p->sz, p->kind)
 	       )
 	       return 0;
 
@@ -103,7 +137,7 @@ static int applicable(const solver *ego_, const problem *p_,
 	     solvers. */
 	  if (p->sz->rnk == 0 && p->vecsz->rnk == 1) return 0;
 
-	  if (NO_NONTHREADEDP(plnr))
+	  if (NO_NONTHREADEDP(plnr)) 
 	       return 0; /* prefer threaded version */
      }
 
@@ -121,7 +155,7 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      INT rvs, cvs;
 
      static const plan_adt padt = {
-	  fftwf_rdft2_solve, awake, print, destroy
+	  X(rdft2_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr, &vdim))
@@ -132,13 +166,13 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 
      A(d->n > 1);  /* or else, p->ri + d->is etc. are invalid */
 
-     fftwf_rdft2_strides(p->kind, d, &rvs, &cvs);
+     X(rdft2_strides)(p->kind, d, &rvs, &cvs);
 
-     cld = fftwf_mkplan_d(plnr,
-		       fftwf_mkproblem_rdft2_d(
-			    fftwf_tensor_copy(p->sz),
-			    fftwf_tensor_copy_except(p->vecsz, vdim),
-			    TAINT(p->r0, rvs), TAINT(p->r1, rvs),
+     cld = X(mkplan_d)(plnr, 
+		       X(mkproblem_rdft2_d)(
+			    X(tensor_copy)(p->sz),
+			    X(tensor_copy_except)(p->vecsz, vdim),
+			    TAINT(p->r0, rvs), TAINT(p->r1, rvs), 
 			    TAINT(p->cr, cvs), TAINT(p->ci, cvs),
 			    p->kind));
      if (!cld) return (plan *) 0;
@@ -151,9 +185,9 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->cvs = cvs;
 
      pln->solver = ego;
-     fftwf_ops_zero(&pln->super.super.ops);
+     X(ops_zero)(&pln->super.super.ops);
      pln->super.super.ops.other = 3.14159; /* magic to prefer codelet loops */
-     fftwf_ops_madd2(pln->vl, &cld->ops, &pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &cld->ops, &pln->super.super.ops);
 
      if (p->sz->rnk != 1 || (p->sz->dims[0].n > 128))
 	  pln->super.super.pcost = pln->vl * cld->pcost;
@@ -171,8 +205,7 @@ static solver *mksolver(int vecloop_dim, const int *buddies, int nbuddies)
      return &(slv->super);
 }
 
-
-void fftwf_rdft2_vrank_geq1_register(planner *p)
+void X(rdft2_vrank_geq1_register)(planner *p)
 {
      int i;
 

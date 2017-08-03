@@ -1,6 +1,27 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
 #include "ifftw.h"
 
-tensor *fftwf_mktensor (int rnk) 
+tensor *X(mktensor)(int rnk) 
 {
      tensor *x;
 
@@ -30,15 +51,15 @@ tensor *fftwf_mktensor (int rnk)
      return x;
 }
 
-void fftwf_tensor_destroy(tensor *sz)
+void X(tensor_destroy)(tensor *sz)
 {
 #if !defined(STRUCT_HACK_C99) && !defined(STRUCT_HACK_KR)
-     fftwf_ifree0(sz->dims);
+     X(ifree0)(sz->dims);
 #endif
-     fftwf_ifree(sz);
+     X(ifree)(sz);
 }
 
-INT fftwf_tensor_sz(const tensor *sz)
+INT X(tensor_sz)(const tensor *sz)
 {
      int i;
      INT n = 1;
@@ -51,23 +72,23 @@ INT fftwf_tensor_sz(const tensor *sz)
      return n;
 }
 
-void fftwf_tensor_md5(md5 *p, const tensor *t)
+void X(tensor_md5)(md5 *p, const tensor *t)
 {
      int i;
-     fftwf_md5int(p, t->rnk);
+     X(md5int)(p, t->rnk);
      if (FINITE_RNK(t->rnk)) {
 	  for (i = 0; i < t->rnk; ++i) {
 	       const iodim *q = t->dims + i;
-	       fftwf_md5INT(p, q->n);
-	       fftwf_md5INT(p, q->is);
-	       fftwf_md5INT(p, q->os);
+	       X(md5INT)(p, q->n);
+	       X(md5INT)(p, q->is);
+	       X(md5INT)(p, q->os);
 	  }
      }
 }
 
 /* treat a (rank <= 1)-tensor as a rank-1 tensor, extracting
    appropriate n, is, and os components */
-int fftwf_tensor_tornk1(const tensor *t, INT *n, INT *is, INT *os)
+int X(tensor_tornk1)(const tensor *t, INT *n, INT *is, INT *os)
 {
      A(t->rnk <= 1);
      if (t->rnk == 1) {
@@ -82,7 +103,7 @@ int fftwf_tensor_tornk1(const tensor *t, INT *n, INT *is, INT *os)
      return 1;
 }
 
-void fftwf_tensor_print(const tensor *x, printer *p)
+void X(tensor_print)(const tensor *x, printer *p)
 {
      if (FINITE_RNK(x->rnk)) {
 	  int i;

@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,14 +14,14 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
-#include "../codelet-rdft.h"
+#include "codelet-rdft.h"
 #include "hc2cf.h"
 
-static int okp(const float *Rp, const float *Ip, const float *Rm, const float *Im, 
+static int okp(const R *Rp, const R *Ip, const R *Rm, const R *Im, 
 	       INT rs, INT mb, INT me, INT ms, 
 	       const planner *plnr)
 {
@@ -31,8 +31,9 @@ static int okp(const float *Rp, const float *Ip, const float *Rm, const float *I
      return 1;
 }
 
-const hc2c_genus fftwf_rdft_hc2cf_genus = { okp, R2HC, 1 };
+const hc2c_genus GENUS = { okp, R2HC, 1 };
 
+#undef GENUS
 #include "hc2cb.h"
 
-const hc2c_genus fftwf_rdft_hc2cb_genus = { okp, HC2R, 1 };
+const hc2c_genus GENUS = { okp, HC2R, 1 };

@@ -2,10 +2,10 @@
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
 /* Define to compile in long-double precision. */
-#define BENCHFFT_LDOUBLE 1
+/* #undef BENCHFFT_LDOUBLE */
 
 /* Define to compile in single precision. */
-/* #define BENCHFFT_SINGLE 1 */
+#define BENCHFFT_SINGLE 1
 
 /* extra CFLAGS for codelets */
 #define CODELET_OPTIM ""
@@ -39,7 +39,7 @@
 /* #undef FC_DUMMY_MAIN_EQ_F77 */
 
 /* C compiler name and flags */
-#define FFTW_CC "arm-eabi-gcc -std=gnu99 -nostdlib"
+#define FFTW_CC "aarch64-linux-android-gcc -std=gnu99 -nostdlib"
 
 /* Define to enable extra FFTW debugging code. */
 /* #undef FFTW_DEBUG */
@@ -54,10 +54,10 @@
 #define FFTW_ENABLE_ALLOCA 1
 
 /* Define to compile in long-double precision. */
-#define FFTW_LDOUBLE 1
+/* #undef FFTW_LDOUBLE */
 
 /* Define to compile in single precision. */
-/* #define FFTW_SINGLE 1 */
+#define FFTW_SINGLE 1
 
 /* Define to 1 if you have the `abort' function. */
 #define HAVE_ABORT 1
@@ -189,7 +189,7 @@
 /* #undef HAVE_OPENMP */
 
 /* Define to 1 if you have the `posix_memalign' function. */
-/* #undef HAVE_POSIX_MEMALIGN */
+#define HAVE_POSIX_MEMALIGN 1
 
 /* Define if you have POSIX threads libraries and header files. */
 /* #undef HAVE_PTHREAD */
@@ -246,7 +246,7 @@
 /* #undef HAVE_TANL */
 
 /* Define if we have a threads library. */
-/* #undef HAVE_THREADS */
+#define HAVE_THREADS 1
 
 /* Define to 1 if you have the `time_base_to_time' function. */
 /* #undef HAVE_TIME_BASE_TO_TIME */
@@ -286,13 +286,13 @@
 #define PACKAGE_NAME "libfftw3"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "fftw 3.2.2"
+#define PACKAGE_STRING "fftw 3.3.4"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "fftw3"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "3.2.2"
+#define PACKAGE_VERSION "3.3.4"
 
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */
@@ -349,10 +349,10 @@
 /* #undef USING_OPENMP_THREADS */
 
 /* Define if we have and are using POSIX threads. */
-/* #undef USING_POSIX_THREADS */
+#define USING_POSIX_THREADS 1
 
 /* Version number of package */
-#define VERSION "3.2.2"
+#define VERSION "3.3.4"
 
 /* Use common Windows Fortran mangling styles for the Fortran interfaces. */
 /* #undef WINDOWS_F77_MANGLING */

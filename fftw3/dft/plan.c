@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,20 +14,19 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
 
 #include "dft.h"
 
-plan *fftwf_mkplan_dft(size_t size, const plan_adt *adt, dftapply apply)
+plan *X(mkplan_dft)(size_t size, const plan_adt *adt, dftapply apply)
 {
      plan_dft *ego;
 
-     ego = (plan_dft *) fftwf_mkplan(size, adt);
+     ego = (plan_dft *) X(mkplan)(size, adt);
      ego->apply = apply;
 
      return &(ego->super);
 }
-

@@ -1,5 +1,30 @@
-#include "rdft.h"
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
 
+
+/* Solve an R2HC/HC2R problem via post/pre processing of a DHT.  This
+   is mainly useful because we can use Rader to compute DHTs of prime
+   sizes.  It also allows us to express hc2r problems in terms of r2hc
+   (via dht-r2hc), and to do hc2r problems without destroying the input. */
+
+#include "rdft.h"
 
 typedef struct {
      solver super;
@@ -12,7 +37,7 @@ typedef struct {
      INT n;
 } P;
 
-static void apply_r2hc(const plan *ego_, float *I, float *O)
+static void apply_r2hc(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT os;
@@ -39,7 +64,7 @@ static void apply_r2hc(const plan *ego_, float *I, float *O)
 }
 
 /* hc2r, destroying input as usual */
-static void apply_hc2r(const plan *ego_, float *I, float *O)
+static void apply_hc2r(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is;
@@ -65,7 +90,7 @@ static void apply_hc2r(const plan *ego_, float *I, float *O)
 }
 
 /* hc2r, without destroying input */
-static void apply_hc2r_save(const plan *ego_, float *I, float *O)
+static void apply_hc2r_save(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
@@ -96,19 +121,19 @@ static void apply_hc2r_save(const plan *ego_, float *I, float *O)
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cld, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld);
+     X(plan_destroy_internal)(ego->cld);
 }
 
 static void print(const plan *ego_, printer *p)
 {
      const P *ego = (const P *) ego_;
-     p->print(p, "(%s-dht-%D%(%p%))",
+     p->print(p, "(%s-dht-%D%(%p%))", 
 	      ego->super.apply == apply_r2hc ? "r2hc" : "hc2r",
 	      ego->n, ego->cld);
 }
@@ -130,7 +155,7 @@ static int applicable0(const solver *ego_, const problem *p_)
 	  );
 }
 
-static int applicable(const solver *ego, const problem *p_,
+static int applicable(const solver *ego, const problem *p_, 
 		      const planner *plnr)
 {
      return (!NO_SLOWP(plnr) && applicable0(ego, p_));
@@ -144,7 +169,7 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      plan *cld;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr))
@@ -153,23 +178,23 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      p = (const problem_rdft *) p_;
 
      if (p->kind[0] == R2HC || !NO_DESTROY_INPUTP(plnr))
-	  cldp = fftwf_mkproblem_rdft_1(p->sz, p->vecsz, p->I, p->O, DHT);
+	  cldp = X(mkproblem_rdft_1)(p->sz, p->vecsz, p->I, p->O, DHT);
      else {
-	  tensor *sz = fftwf_tensor_copy_inplace(p->sz, INPLACE_OS);
-	  cldp = fftwf_mkproblem_rdft_1(sz, p->vecsz, p->O, p->O, DHT);
-	  fftwf_tensor_destroy(sz);
+	  tensor *sz = X(tensor_copy_inplace)(p->sz, INPLACE_OS);
+	  cldp = X(mkproblem_rdft_1)(sz, p->vecsz, p->O, p->O, DHT);
+	  X(tensor_destroy)(sz);
      }
-     cld = fftwf_mkplan_d(plnr, cldp);
+     cld = X(mkplan_d)(plnr, cldp);
      if (!cld) return (plan *)0;
 
-     pln = MKPLAN_RDFT(P, &padt, p->kind[0] == R2HC ?
+     pln = MKPLAN_RDFT(P, &padt, p->kind[0] == R2HC ? 
 		       apply_r2hc : (NO_DESTROY_INPUTP(plnr) ?
 				     apply_hc2r_save : apply_hc2r));
      pln->n = p->sz->dims[0].n;
      pln->is = p->sz->dims[0].is;
      pln->os = p->sz->dims[0].os;
      pln->cld = cld;
-
+     
      pln->super.super.ops = cld->ops;
      pln->super.super.ops.other += 4 * ((pln->n - 1)/2);
      pln->super.super.ops.add += 2 * ((pln->n - 1)/2);
@@ -189,7 +214,7 @@ static solver *mksolver(void)
      return &(slv->super);
 }
 
-void fftwf_rdft_dht_register(planner *p)
+void X(rdft_dht_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }

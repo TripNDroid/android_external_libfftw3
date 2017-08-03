@@ -12,6 +12,7 @@ include $(LOCAL_PATH)/rdft/scalar/r2cb/sources.mk
 include $(LOCAL_PATH)/rdft/scalar/r2cf/sources.mk
 include $(LOCAL_PATH)/rdft/scalar/r2r/sources.mk
 include $(LOCAL_PATH)/reodft/sources.mk
+include $(LOCAL_PATH)/threads/sources.mk
 
 LOCAL_MODULE := libfftw3
 LOCAL_MODULE_TAGS := optional
@@ -27,6 +28,7 @@ LOCAL_C_INCLUDES :=  $(LOCAL_PATH) \
                      $(LOCAL_PATH)/rdft/scalar/r2cb \
                      $(LOCAL_PATH)/rdft/scalar/r2r \
                      $(LOCAL_PATH)/rdft/scalar/r2cf \
-					 $(LOCAL_PATH)/reodft
+					 $(LOCAL_PATH)/reodft \
+					 $(LOCAL_PATH)/threads
                                         
 include $(BUILD_SHARED_LIBRARY)

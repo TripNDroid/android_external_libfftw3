@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
 #include "ifftw.h"
 
 /**********************************************************
@@ -8,22 +28,22 @@
 #include <stdio.h>
 
 /*
-  debugging malloc/free.
-
+  debugging malloc/free. 
+ 
   1) Initialize every malloced and freed area to random values, just
   to make sure we are not using uninitialized pointers.
-
+ 
   2) check for blocks freed twice.
-
+ 
   3) Check for writes past the ends of allocated blocks
-
+ 
   4) destroy contents of freed blocks in order to detect incorrect reuse.
-
+ 
   5) keep track of who allocates what and report memory leaks
-
-  This code is a quick and dirty hack.  May be nonportable.
+ 
+  This code is a quick and dirty hack.  May be nonportable. 
   Use at your own risk.
-
+ 
 */
 
 #define MAGIC ((size_t)0xABadCafe)
@@ -95,7 +115,7 @@ void *X(malloc_debug)(size_t n, enum malloc_tag what,
      if (!IN_THREAD) {
 	  ++stat->cnt;
 	  ++estat->cnt;
-
+	  
 	  if (stat->cnt > stat->maxcnt)
 	       stat->maxcnt = stat->cnt;
 	  if (estat->cnt > estat->maxcnt)
@@ -120,7 +140,7 @@ void *X(malloc_debug)(size_t n, enum malloc_tag what,
      return (void *) p;
 }
 
-void fftwf_ifree (void *p)
+void X(ifree)(void *p)
 {
      char *q;
 
@@ -161,7 +181,7 @@ void fftwf_ifree (void *p)
 	  if (!IN_THREAD) {
 	       --stat->cnt;
 	       --estat->cnt;
-
+	       
 	       A(stat->cnt >= 0);
 	       A((stat->cnt == 0 && stat->siz == 0) ||
 		 (stat->cnt > 0 && stat->siz > 0));
@@ -170,7 +190,7 @@ void fftwf_ifree (void *p)
 		 (estat->cnt > 0 && estat->siz > 0));
 	  }
 
-          fftwf_kernel_free(q);
+          X(kernel_free)(q);
      }
 
      if (!IN_THREAD) {
@@ -217,13 +237,13 @@ void X(malloc_print_minfo)(int verbose)
 	  }
      }
 
-     for (h = 0; h < HASHSZ; ++h)
+     for (h = 0; h < HASHSZ; ++h) 
 	  if (minfo[h]) {
 	       printf("\nUnfreed allocations:\n");
 	       break;
 	  }
 
-     for (h = 0; h < HASHSZ; ++h)
+     for (h = 0; h < HASHSZ; ++h) 
 	  for (info = minfo[h]; info; info = info->next) {
 	       leak = 1;
 	       printf("%s:%d:  %zd bytes at %p\n",
@@ -240,12 +260,12 @@ void X(malloc_print_minfo)(int verbose)
  **********************************************************/
 /* production version, no hacks */
 
-void *fftwf_malloc_plain(size_t n)
+void *X(malloc_plain)(size_t n)
 {
      void *p;
      if (n == 0)
           n = 1;
-     p = fftwf_kernel_malloc(n);
+     p = X(kernel_malloc)(n);
      CK(p);
 
 #ifdef MIN_ALIGNMENT
@@ -255,15 +275,15 @@ void *fftwf_malloc_plain(size_t n)
      return p;
 }
 
-void fftwf_ifree (void *p)
+void X(ifree)(void *p)
 {
-     fftwf_kernel_free (p);
+     X(kernel_free)(p);
 }
 
 #endif
 
-void fftwf_ifree0 (void *p)
+void X(ifree0)(void *p)
 {
      /* common pattern */
-     if (p) fftwf_ifree (p);
+     if (p) X(ifree)(p);
 }

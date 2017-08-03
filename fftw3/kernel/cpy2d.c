@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
 /* out of place 2D copy routines */
 #include "ifftw.h"
 
@@ -13,7 +33,7 @@
 #  define WIDE_TYPE double
 #endif
 
-void fftwf_cpy2d(float *I, float *O,
+void X(cpy2d)(R *I, R *O,
 	      INT n0, INT is0, INT os0,
 	      INT n1, INT is1, INT os1,
 	      INT vl)
@@ -24,13 +44,13 @@ void fftwf_cpy2d(float *I, float *O,
 	 case 1:
 	      for (i1 = 0; i1 < n1; ++i1)
 		   for (i0 = 0; i0 < n0; ++i0) {
-			float x0 = I[i0 * is0 + i1 * is1];
+			R x0 = I[i0 * is0 + i1 * is1];
 			O[i0 * os0 + i1 * os1] = x0;
 		   }
 	      break;
 	 case 2:
 	      if (1
-		  && (2 * sizeof(float) == sizeof(WIDE_TYPE))
+		  && (2 * sizeof(R) == sizeof(WIDE_TYPE))
 		  && (sizeof(WIDE_TYPE) > sizeof(double))
 		  && (((size_t)I) % sizeof(WIDE_TYPE) == 0)
 		  && (((size_t)O) % sizeof(WIDE_TYPE) == 0)
@@ -48,7 +68,7 @@ void fftwf_cpy2d(float *I, float *O,
 				  *(WIDE_TYPE *)&I[i0 * is0 + i1 * is1];
 			}
 	      } else if (1
-		  && (2 * sizeof(float) == sizeof(double))
+		  && (2 * sizeof(R) == sizeof(double))
 		  && (((size_t)I) % sizeof(double) == 0)
 		  && (((size_t)O) % sizeof(double) == 0)
 		  && ((is0 & 1) == 0)
@@ -66,8 +86,8 @@ void fftwf_cpy2d(float *I, float *O,
 	      } else {
 		   for (i1 = 0; i1 < n1; ++i1)
 			for (i0 = 0; i0 < n0; ++i0) {
-			     float x0 = I[i0 * is0 + i1 * is1];
-			     float x1 = I[i0 * is0 + i1 * is1 + 1];
+			     R x0 = I[i0 * is0 + i1 * is1];
+			     R x1 = I[i0 * is0 + i1 * is1 + 1];
 			     O[i0 * os0 + i1 * os1] = x0;
  			     O[i0 * os0 + i1 * os1 + 1] = x1;
 			}
@@ -77,7 +97,7 @@ void fftwf_cpy2d(float *I, float *O,
 	      for (i1 = 0; i1 < n1; ++i1)
 		   for (i0 = 0; i0 < n0; ++i0)
 			for (v = 0; v < vl; ++v) {
-			     float x0 = I[i0 * is0 + i1 * is1 + v];
+			     R x0 = I[i0 * is0 + i1 * is1 + v];
 			     O[i0 * os0 + i1 * os1 + v] = x0;
 			}
 	      break;
@@ -85,41 +105,41 @@ void fftwf_cpy2d(float *I, float *O,
 }
 
 /* like cpy2d, but read input contiguously if possible */
-void fftwf_cpy2d_ci(float *I, float *O,
+void X(cpy2d_ci)(R *I, R *O,
 		 INT n0, INT is0, INT os0,
 		 INT n1, INT is1, INT os1,
 		 INT vl)
 {
      if (IABS(is0) < IABS(is1))	/* inner loop is for n0 */
-	 fftwf_cpy2d (I, O, n0, is0, os0, n1, is1, os1, vl);
+	  X(cpy2d) (I, O, n0, is0, os0, n1, is1, os1, vl);
      else
-	 fftwf_cpy2d (I, O, n1, is1, os1, n0, is0, os0, vl);
+	  X(cpy2d) (I, O, n1, is1, os1, n0, is0, os0, vl);
 }
 
 /* like cpy2d, but write output contiguously if possible */
-void fftwf_cpy2d_co(float *I, float *O,
+void X(cpy2d_co)(R *I, R *O,
 		 INT n0, INT is0, INT os0,
 		 INT n1, INT is1, INT os1,
 		 INT vl)
 {
      if (IABS(os0) < IABS(os1))	/* inner loop is for n0 */
-	 fftwf_cpy2d (I, O, n0, is0, os0, n1, is1, os1, vl);
+	  X(cpy2d) (I, O, n0, is0, os0, n1, is1, os1, vl);
      else
-	 fftwf_cpy2d(I, O, n1, is1, os1, n0, is0, os0, vl);
+	  X(cpy2d) (I, O, n1, is1, os1, n0, is0, os0, vl);
 }
 
 
 /* tiled copy routines */
 struct cpy2d_closure {
-     float *I, *O;
+     R *I, *O;
      INT is0, os0, is1, os1, vl;
-     float *buf;
+     R *buf;
 };
 
 static void dotile(INT n0l, INT n0u, INT n1l, INT n1u, void *args)
 {
      struct cpy2d_closure *k = (struct cpy2d_closure *)args;
-    fftwf_cpy2d(k->I + n0l * k->is0 + n1l * k->is1,
+     X(cpy2d)(k->I + n0l * k->is0 + n1l * k->is1,
 	      k->O + n0l * k->os0 + n1l * k->os1,
 	      n0u - n0l, k->is0, k->os0,
 	      n1u - n1l, k->is1, k->os1,
@@ -131,14 +151,14 @@ static void dotile_buf(INT n0l, INT n0u, INT n1l, INT n1u, void *args)
      struct cpy2d_closure *k = (struct cpy2d_closure *)args;
 
      /* copy from I to buf */
-    fftwf_cpy2d_ci(k->I + n0l * k->is0 + n1l * k->is1,
+     X(cpy2d_ci)(k->I + n0l * k->is0 + n1l * k->is1,
 		 k->buf,
 		 n0u - n0l, k->is0, k->vl,
 		 n1u - n1l, k->is1, k->vl * (n0u - n0l),
 		 k->vl);
 
      /* copy from buf to O */
-    fftwf_cpy2d_co(k->buf,
+     X(cpy2d_co)(k->buf,
 		 k->O + n0l * k->os0 + n1l * k->os1,
 		 n0u - n0l, k->vl, k->os0,
 		 n1u - n1l, k->vl * (n0u - n0l), k->os1,
@@ -146,11 +166,11 @@ static void dotile_buf(INT n0l, INT n0u, INT n1l, INT n1u, void *args)
 }
 
 
-void fftwf_cpy2d_tiled(float *I, float *O,
+void X(cpy2d_tiled)(R *I, R *O,
 		    INT n0, INT is0, INT os0,
 		    INT n1, INT is1, INT os1, INT vl)
 {
-     INT tilesz =fftwf_compute_tilesz(vl,
+     INT tilesz = X(compute_tilesz)(vl,
 				    1 /* input array */
 				    + 1 /* ouput array */);
      struct cpy2d_closure k;
@@ -162,17 +182,17 @@ void fftwf_cpy2d_tiled(float *I, float *O,
      k.os1 = os1;
      k.vl = vl;
      k.buf = 0; /* unused */
-    fftwf_tile2d(0, n0, 0, n1, tilesz, dotile, &k);
+     X(tile2d)(0, n0, 0, n1, tilesz, dotile, &k);
 }
 
-void fftwf_cpy2d_tiledbuf(float *I, float *O,
+void X(cpy2d_tiledbuf)(R *I, R *O,
 		       INT n0, INT is0, INT os0,
 		       INT n1, INT is1, INT os1, INT vl)
 {
-     float buf[CACHESIZE / (2 * sizeof(float))];
+     R buf[CACHESIZE / (2 * sizeof(R))];
      /* input and buffer in cache, or
 	output and buffer in cache */
-     INT tilesz =fftwf_compute_tilesz(vl, 2);
+     INT tilesz = X(compute_tilesz)(vl, 2);
      struct cpy2d_closure k;
      k.I = I;
      k.O = O;
@@ -182,6 +202,6 @@ void fftwf_cpy2d_tiledbuf(float *I, float *O,
      k.os1 = os1;
      k.vl = vl;
      k.buf = buf;
-     A(tilesz * tilesz * vl * sizeof(float) <= sizeof(buf));
-    fftwf_tile2d(0, n0, 0, n1, tilesz, dotile_buf, &k);
+     A(tilesz * tilesz * vl * sizeof(R) <= sizeof(buf));
+     X(tile2d)(0, n0, 0, n1, tilesz, dotile_buf, &k);
 }

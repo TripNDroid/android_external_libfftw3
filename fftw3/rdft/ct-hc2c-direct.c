@@ -1,4 +1,22 @@
-
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
 
 
 #include "ct-hc2c.h"
@@ -24,7 +42,7 @@ typedef struct {
 /*************************************************************
   Nonbuffered code
  *************************************************************/
-static void apply(const plan *ego_, float *cr, float *ci)
+static void apply(const plan *ego_, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      plan_rdft2 *cld0 = (plan_rdft2 *) ego->cld0;
@@ -36,12 +54,12 @@ static void apply(const plan *ego_, float *cr, float *ci)
 	  cld0->apply((plan *) cld0, cr, ci, cr, ci);
 	  ego->k(cr + ms, ci + ms, cr + (m-1)*ms, ci + (m-1)*ms,
 		 ego->td->W, ego->rs, 1, (m+1)/2, ms);
-	  cldm->apply((plan *) cldm, cr + (m/2)*ms, ci + (m/2)*ms,
+	  cldm->apply((plan *) cldm, cr + (m/2)*ms, ci + (m/2)*ms, 
 		      cr + (m/2)*ms, ci + (m/2)*ms);
      }
 }
 
-static void apply_extra_iter(const plan *ego_, float *cr, float *ci)
+static void apply_extra_iter(const plan *ego_, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      plan_rdft2 *cld0 = (plan_rdft2 *) ego->cld0;
@@ -63,7 +81,7 @@ static void apply_extra_iter(const plan *ego_, float *cr, float *ci)
 		 ego->td->W, ego->rs, 1, mm, ms);
 	  ego->k(cr + mm*ms, ci + mm*ms, cr + (m-mm)*ms, ci + (m-mm)*ms,
 		 ego->td->W, ego->rs, mm, mm+2, 0);
-	  cldm->apply((plan *) cldm, cr + (m/2)*ms, ci + (m/2)*ms,
+	  cldm->apply((plan *) cldm, cr + (m/2)*ms, ci + (m/2)*ms, 
 		      cr + (m/2)*ms, ci + (m/2)*ms);
      }
 
@@ -83,62 +101,63 @@ static INT compute_batchsize(INT radix)
      return (radix + 2);
 }
 
-static void dobatch(const P *ego, float *Rp, float *Ip, float *Rm, float *Im,
-		    INT mb, INT me, INT extra_iter, float *bufp)
+static void dobatch(const P *ego, R *Rp, R *Ip, R *Rm, R *Im,
+		    INT mb, INT me, INT extra_iter, R *bufp)
 {
      INT b = WS(ego->brs, 1);
      INT rs = WS(ego->rs, 1);
      INT ms = ego->ms;
-     float *bufm = bufp + b - 2;
+     R *bufm = bufp + b - 2;
 
-     fftwf_cpy2d_pair_ci(Rp + mb * ms, Ip + mb * ms, bufp, bufp + 1,
+     X(cpy2d_pair_ci)(Rp + mb * ms, Ip + mb * ms, bufp, bufp + 1,
 		      ego->r / 2, rs, b,
 		      me - mb, ms, 2);
-     fftwf_cpy2d_pair_ci(Rm - mb * ms, Im - mb * ms, bufm, bufm + 1,
+     X(cpy2d_pair_ci)(Rm - mb * ms, Im - mb * ms, bufm, bufm + 1,
 		      ego->r / 2, rs, b,
 		      me - mb, -ms, -2);
-     ego->k(bufp, bufp + 1, bufm, bufm + 1, ego->td->W,
+     ego->k(bufp, bufp + 1, bufm, bufm + 1, ego->td->W, 
 	    ego->brs, mb, me + extra_iter, 2);
-     fftwf_cpy2d_pair_co(bufp, bufp + 1, Rp + mb * ms, Ip + mb * ms,
+     X(cpy2d_pair_co)(bufp, bufp + 1, Rp + mb * ms, Ip + mb * ms, 
 		      ego->r / 2, b, rs,
 		      me - mb, 2, ms);
-     fftwf_cpy2d_pair_co(bufm, bufm + 1, Rm - mb * ms, Im - mb * ms,
+     X(cpy2d_pair_co)(bufm, bufm + 1, Rm - mb * ms, Im - mb * ms,
 		      ego->r / 2, b, rs,
 		      me - mb, -2, -ms);
 }
 
-static void apply_buf(const plan *ego_, float *cr, float *ci)
+static void apply_buf(const plan *ego_, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      plan_rdft2 *cld0 = (plan_rdft2 *) ego->cld0;
      plan_rdft2 *cldm = (plan_rdft2 *) ego->cldm;
      INT i, j, ms = ego->ms, v = ego->v;
      INT batchsz = compute_batchsize(ego->r);
-     float *buf;
+     R *buf;
      INT mb = 1, me = (ego->m+1) / 2;
+     size_t bufsz = ego->r * batchsz * 2 * sizeof(R);
 
-     STACK_MALLOC(float *, buf, ego->r * batchsz * 2 * sizeof(float));
+     BUF_ALLOC(R *, buf, bufsz);
 
      for (i = 0; i < v; ++i, cr += ego->vs, ci += ego->vs) {
-	  float *Rp = cr;
-	  float *Ip = ci;
-	  float *Rm = cr + ego->m * ms;
-	  float *Im = ci + ego->m * ms;
-cld0->apply((plan *) cld0, Rp, Ip, Rp, Ip);
+	  R *Rp = cr;
+	  R *Ip = ci;
+	  R *Rm = cr + ego->m * ms;
+	  R *Im = ci + ego->m * ms;
 
-	  for (j = mb; j + batchsz < me; j += batchsz)
+	  cld0->apply((plan *) cld0, Rp, Ip, Rp, Ip);
+
+	  for (j = mb; j + batchsz < me; j += batchsz) 
 	       dobatch(ego, Rp, Ip, Rm, Im, j, j + batchsz, 0, buf);
 
 	  dobatch(ego, Rp, Ip, Rm, Im, j, me, ego->extra_iter, buf);
 
-	  cldm->apply((plan *) cldm,
+	  cldm->apply((plan *) cldm, 
 		      Rp + me * ms, Ip + me * ms,
 		      Rp + me * ms, Ip + me * ms);
 
-	
      }
 
-     STACK_FREE(buf);
+     BUF_FREE(buf, bufsz);
 }
 
 /*************************************************************
@@ -148,20 +167,20 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
 
-     fftwf_plan_awake(ego->cld0, wakefulness);
-     fftwf_plan_awake(ego->cldm, wakefulness);
-     fftwf_twiddle_awake(wakefulness, &ego->td, ego->slv->desc->tw,
-		      ego->r * ego->m, ego->r,
+     X(plan_awake)(ego->cld0, wakefulness);
+     X(plan_awake)(ego->cldm, wakefulness);
+     X(twiddle_awake)(wakefulness, &ego->td, ego->slv->desc->tw, 
+		      ego->r * ego->m, ego->r, 
 		      (ego->m - 1) / 2 + ego->extra_iter);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld0);
-     fftwf_plan_destroy_internal(ego->cldm);
-     fftwf_stride_destroy(ego->rs);
-     fftwf_stride_destroy(ego->brs);
+     X(plan_destroy_internal)(ego->cld0);
+     X(plan_destroy_internal)(ego->cldm);
+     X(stride_destroy)(ego->rs);
+     X(stride_destroy)(ego->brs);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -173,21 +192,21 @@ static void print(const plan *ego_, printer *p)
      if (slv->bufferedp)
 	  p->print(p, "(hc2c-directbuf/%D-%D/%D/%D%v \"%s\"%(%p%)%(%p%))",
 		   compute_batchsize(ego->r),
-		   ego->r, fftwf_twiddle_length(ego->r, e->tw),
-		   ego->extra_iter, ego->v, e->nam,
+		   ego->r, X(twiddle_length)(ego->r, e->tw),
+		   ego->extra_iter, ego->v, e->nam, 
 		   ego->cld0, ego->cldm);
      else
 	  p->print(p, "(hc2c-direct-%D/%D/%D%v \"%s\"%(%p%)%(%p%))",
-		   ego->r, fftwf_twiddle_length(ego->r, e->tw),
-		   ego->extra_iter, ego->v, e->nam,
+		   ego->r, X(twiddle_length)(ego->r, e->tw), 
+		   ego->extra_iter, ego->v, e->nam, 
 		   ego->cld0, ego->cldm);
 }
 
 static int applicable0(const S *ego, rdft_kind kind,
 		       INT r, INT rs,
-		       INT m, INT ms,
+		       INT m, INT ms, 
 		       INT v, INT vs,
-		       const float *cr, const float *ci,
+		       const R *cr, const R *ci,
 		       const planner *plnr,
 		       INT *extra_iter)
 {
@@ -210,7 +229,7 @@ static int applicable0(const S *ego, rdft_kind kind,
 		&&
 		(e->genus->okp(cr + ms, ci + ms, cr + (m-1)*ms, ci + (m-1)*ms,
 			       rs, (m-1)/2, (m-1)/2 + 2, 0, plnr)))))
-
+	  
 	  /* subsequent v-loop iterations */
 	  && (cr += vs, ci += vs, 1)
 
@@ -221,9 +240,9 @@ static int applicable0(const S *ego, rdft_kind kind,
 
 static int applicable0_buf(const S *ego, rdft_kind kind,
 			   INT r, INT rs,
-			   INT m, INT ms,
+			   INT m, INT ms, 
 			   INT v, INT vs,
-			   const float *cr, const float *ci,
+			   const R *cr, const R *ci,
 			   const planner *plnr, INT *extra_iter)
 {
      const hc2c_desc *e = ego->desc;
@@ -236,29 +255,29 @@ static int applicable0_buf(const S *ego, rdft_kind kind,
 	  && kind == e->genus->kind
 
 	  /* ignore cr, ci, use buffer */
-	  && (cr = (const float *)0, ci = cr + 1,
-	      batchsz = compute_batchsize(r),
+	  && (cr = (const R *)0, ci = cr + 1, 
+	      batchsz = compute_batchsize(r), 
 	      brs = 4 * batchsz, 1)
 
-	  && e->genus->okp(cr, ci, cr + brs - 2, ci + brs - 2,
+	  && e->genus->okp(cr, ci, cr + brs - 2, ci + brs - 2, 
 			   brs, 1, 1+batchsz, 2, plnr)
 
 	  && ((*extra_iter = 0,
-	       e->genus->okp(cr, ci, cr + brs - 2, ci + brs - 2,
+	       e->genus->okp(cr, ci, cr + brs - 2, ci + brs - 2, 
 			     brs, 1, 1 + (((m-1)/2) % batchsz), 2, plnr))
 	      ||
 	      (*extra_iter = 1,
-	       e->genus->okp(cr, ci, cr + brs - 2, ci + brs - 2,
+	       e->genus->okp(cr, ci, cr + brs - 2, ci + brs - 2, 
 			     brs, 1, 1 + 1 + (((m-1)/2) % batchsz), 2, plnr)))
-
+	      
 	  );
 }
 
 static int applicable(const S *ego, rdft_kind kind,
 		      INT r, INT rs,
-		      INT m, INT ms,
+		      INT m, INT ms, 
 		      INT v, INT vs,
-		      float *cr, float *ci,
+		      R *cr, R *ci,
 		      const planner *plnr, INT *extra_iter)
 {
      if (ego->bufferedp) {
@@ -271,7 +290,7 @@ static int applicable(const S *ego, rdft_kind kind,
 	       return 0;
      }
 
-     if (NO_UGLYP(plnr) && fftwf_ct_uglyp((ego->bufferedp? (INT)512 : (INT)16),
+     if (NO_UGLYP(plnr) && X(ct_uglyp)((ego->bufferedp? (INT)512 : (INT)16),
 				       v, m * r, r))
 	  return 0;
 
@@ -280,9 +299,9 @@ static int applicable(const S *ego, rdft_kind kind,
 
 static plan *mkcldw(const hc2c_solver *ego_, rdft_kind kind,
 		    INT r, INT rs,
-		    INT m, INT ms,
+		    INT m, INT ms, 
 		    INT v, INT vs,
-		    float *cr, float *ci,
+		    R *cr, R *ci,
 		    planner *plnr)
 {
      const S *ego = (const S *) ego_;
@@ -296,24 +315,24 @@ static plan *mkcldw(const hc2c_solver *ego_, rdft_kind kind,
 	  0, awake, print, destroy
      };
 
-     if (!applicable(ego, kind, r, rs, m, ms, v, vs, cr, ci, plnr,
+     if (!applicable(ego, kind, r, rs, m, ms, v, vs, cr, ci, plnr, 
 		     &extra_iter))
           return (plan *)0;
 
-     cld0 = fftwf_mkplan_d(
-	  plnr,
-	  fftwf_mkproblem_rdft2_d(fftwf_mktensor_1d(r, rs, rs),
-			       fftwf_mktensor_0d(),
+     cld0 = X(mkplan_d)(
+	  plnr, 
+	  X(mkproblem_rdft2_d)(X(mktensor_1d)(r, rs, rs),
+			       X(mktensor_0d)(),
 			       TAINT(cr, vs), TAINT(ci, vs),
 			       TAINT(cr, vs), TAINT(ci, vs),
 			       kind));
      if (!cld0) goto nada;
 
-     cldm = fftwf_mkplan_d(
-	  plnr,
-	  fftwf_mkproblem_rdft2_d(((m % 2) ?
-				fftwf_mktensor_0d() : fftwf_mktensor_1d(r, rs, rs) ),
-			       fftwf_mktensor_0d(),
+     cldm = X(mkplan_d)(
+	  plnr, 
+	  X(mkproblem_rdft2_d)(((m % 2) ?
+				X(mktensor_0d)() : X(mktensor_1d)(r, rs, rs) ),
+			       X(mktensor_0d)(),
 			       TAINT(cr + imid, vs), TAINT(ci + imid, vs),
 			       TAINT(cr + imid, vs), TAINT(ci + imid, vs),
 			       kind == R2HC ? R2HCII : HC2RIII));
@@ -326,45 +345,45 @@ static plan *mkcldw(const hc2c_solver *ego_, rdft_kind kind,
 
      pln->k = ego->k;
      pln->td = 0;
-     pln->r = r; pln->rs = fftwf_mkstride(r, rs);
+     pln->r = r; pln->rs = X(mkstride)(r, rs);
      pln->m = m; pln->ms = ms;
      pln->v = v; pln->vs = vs;
      pln->slv = ego;
-     pln->brs = fftwf_mkstride(r, 4 * compute_batchsize(r));
+     pln->brs = X(mkstride)(r, 4 * compute_batchsize(r));
      pln->cld0 = cld0;
      pln->cldm = cldm;
      pln->extra_iter = extra_iter;
 
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(v * (((m - 1) / 2) / e->genus->vl),
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(v * (((m - 1) / 2) / e->genus->vl),
 		  &e->ops, &pln->super.super.ops);
-     fftwf_ops_madd2(v, &cld0->ops, &pln->super.super.ops);
-     fftwf_ops_madd2(v, &cldm->ops, &pln->super.super.ops);
+     X(ops_madd2)(v, &cld0->ops, &pln->super.super.ops);
+     X(ops_madd2)(v, &cldm->ops, &pln->super.super.ops);
 
-     if (ego->bufferedp)
+     if (ego->bufferedp) 
 	  pln->super.super.ops.other += 4 * r * m * v;
 
      return &(pln->super.super);
 
  nada:
-     fftwf_plan_destroy_internal(cld0);
-     fftwf_plan_destroy_internal(cldm);
+     X(plan_destroy_internal)(cld0);
+     X(plan_destroy_internal)(cldm);
      return 0;
 }
 
 static void regone(planner *plnr, khc2c codelet,
-		   const hc2c_desc *desc,
-		   hc2c_kind hc2ckind,
+		   const hc2c_desc *desc, 
+		   hc2c_kind hc2ckind, 
 		   int bufferedp)
 {
-     S *slv = (S *)fftwf_mksolver_hc2c(sizeof(S), desc->radix, hc2ckind, mkcldw);
+     S *slv = (S *)X(mksolver_hc2c)(sizeof(S), desc->radix, hc2ckind, mkcldw);
      slv->k = codelet;
      slv->desc = desc;
      slv->bufferedp = bufferedp;
      REGISTER_SOLVER(plnr, &(slv->super.super));
 }
 
-void fftwf_regsolver_hc2c_direct(planner *plnr, khc2c codelet,
+void X(regsolver_hc2c_direct)(planner *plnr, khc2c codelet,
 			      const hc2c_desc *desc,
 			      hc2c_kind hc2ckind)
 {

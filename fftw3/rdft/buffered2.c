@@ -1,5 +1,28 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
+/* buffering of rdft2.  We always buffer the complex array */
+
 #include "rdft.h"
-#include "../dft/dft.h"
+#include "dft.h"
 
 typedef struct {
      solver super;
@@ -18,16 +41,16 @@ typedef struct {
 } P;
 
 /* transform a vector input with the help of bufs */
-static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
+static void apply_r2hc(const plan *ego_, R *r0, R *r1, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      plan_rdft2 *cld = (plan_rdft2 *) ego->cld;
      plan_dft *cldcpy = (plan_dft *) ego->cldcpy;
      INT i, vl = ego->vl, nbuf = ego->nbuf;
      INT ivs_by_nbuf = ego->ivs_by_nbuf, ovs_by_nbuf = ego->ovs_by_nbuf;
-     float *bufs = (float *)MALLOC(sizeof(float) * nbuf * ego->bufdist, BUFFERS);
-     float *bufr = bufs + ego->roffset;
-     float *bufi = bufs + ego->ioffset;
+     R *bufs = (R *)MALLOC(sizeof(R) * nbuf * ego->bufdist, BUFFERS);
+     R *bufr = bufs + ego->roffset;
+     R *bufi = bufs + ego->ioffset;
      plan_rdft2 *cldrest;
 
      for (i = nbuf; i <= vl; i += nbuf) {
@@ -40,7 +63,7 @@ static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float 
 	  cr += ovs_by_nbuf; ci += ovs_by_nbuf;
      }
 
-     fftwf_ifree(bufs);
+     X(ifree)(bufs);
 
      /* Do the remaining transforms, if any: */
      cldrest = (plan_rdft2 *) ego->cldrest;
@@ -50,16 +73,16 @@ static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float 
 /* for hc2r problems, copy the input into buffer, and then
    transform buffer->output, which allows for destruction of the
    buffer */
-static void apply_hc2r(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
+static void apply_hc2r(const plan *ego_, R *r0, R *r1, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      plan_rdft2 *cld = (plan_rdft2 *) ego->cld;
      plan_dft *cldcpy = (plan_dft *) ego->cldcpy;
      INT i, vl = ego->vl, nbuf = ego->nbuf;
      INT ivs_by_nbuf = ego->ivs_by_nbuf, ovs_by_nbuf = ego->ovs_by_nbuf;
-     float *bufs = (float *)MALLOC(sizeof(float) * nbuf * ego->bufdist, BUFFERS);
-     float *bufr = bufs + ego->roffset;
-     float *bufi = bufs + ego->ioffset;
+     R *bufs = (R *)MALLOC(sizeof(R) * nbuf * ego->bufdist, BUFFERS);
+     R *bufr = bufs + ego->roffset;
+     R *bufi = bufs + ego->ioffset;
      plan_rdft2 *cldrest;
 
      for (i = nbuf; i <= vl; i += nbuf) {
@@ -72,7 +95,7 @@ static void apply_hc2r(const plan *ego_, float *r0, float *r1, float *cr, float 
 	  r0 += ovs_by_nbuf; r1 += ovs_by_nbuf;
      }
 
-     fftwf_ifree(bufs);
+     X(ifree)(bufs);
 
      /* Do the remaining transforms, if any: */
      cldrest = (plan_rdft2 *) ego->cldrest;
@@ -84,17 +107,17 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
 
-     fftwf_plan_awake(ego->cld, wakefulness);
-     fftwf_plan_awake(ego->cldcpy, wakefulness);
-     fftwf_plan_awake(ego->cldrest, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
+     X(plan_awake)(ego->cldcpy, wakefulness);
+     X(plan_awake)(ego->cldrest, wakefulness);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cldrest);
-     fftwf_plan_destroy_internal(ego->cldcpy);
-     fftwf_plan_destroy_internal(ego->cld);
+     X(plan_destroy_internal)(ego->cldrest);
+     X(plan_destroy_internal)(ego->cldcpy);
+     X(plan_destroy_internal)(ego->cld);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -123,15 +146,15 @@ static int applicable0(const S *ego, const problem *p_, const planner *plnr)
 
 	  ) {
 	  INT vl, ivs, ovs;
-	  fftwf_tensor_tornk1(p->vecsz, &vl, &ivs, &ovs);
+	  X(tensor_tornk1)(p->vecsz, &vl, &ivs, &ovs);
 
-	  if (fftwf_toobig(d[0].n) && CONSERVE_MEMORYP(plnr))
+	  if (X(toobig)(d[0].n) && CONSERVE_MEMORYP(plnr))
 	       return 0;
 
 	  /* if this solver is redundant, in the sense that a solver
 	     of lower index generates the same plan, then prune this
 	     solver */
-	  if (fftwf_nbuf_redundant(d[0].n, vl,
+	  if (X(nbuf_redundant)(d[0].n, vl,
 				ego->maxnbuf_ndx,
 				maxnbufs, NELEM(maxnbufs)))
 	       return 0;
@@ -158,13 +181,13 @@ static int applicable0(const S *ego, const problem *p_, const planner *plnr)
 	   * If the problem is in place, the input/output strides must
 	   * be the same or the whole thing must fit in the buffer.
 	   */
-	  if (fftwf_rdft2_inplace_strides(p, RNK_MINFTY))
+	  if (X(rdft2_inplace_strides(p, RNK_MINFTY)))
 	       return 1;
 
 	  if (/* fits into buffer: */
 	       ((p->vecsz->rnk == 0)
 		||
-		(fftwf_nbuf(d[0].n, p->vecsz->dims[0].n,
+		(X(nbuf)(d[0].n, p->vecsz->dims[0].n,
 			 maxnbufs[ego->maxnbuf_ndx])
 		 == p->vecsz->dims[0].n)))
 	       return 1;
@@ -186,12 +209,12 @@ static int applicable(const S *ego, const problem *p_, const planner *plnr)
 	  if (NO_UGLYP(plnr)) {
 	       /* UGLY if in-place and too big, since the problem
 		  could be solved via transpositions */
-	       if (p->r0 == p->cr && fftwf_toobig(p->sz->dims[0].n))
+	       if (p->r0 == p->cr && X(toobig)(p->sz->dims[0].n)) 
 		    return 0;
 	  }
      } else {
 	  if (NO_UGLYP(plnr)) {
-	       if (p->r0 != p->cr || fftwf_toobig(p->sz->dims[0].n))
+	       if (p->r0 != p->cr || X(toobig)(p->sz->dims[0].n))
 		    return 0;
 	  }
      }
@@ -206,22 +229,22 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      plan *cldcpy = (plan *) 0;
      plan *cldrest = (plan *) 0;
      const problem_rdft2 *p = (const problem_rdft2 *) p_;
-     float *bufs = (float *) 0;
+     R *bufs = (R *) 0;
      INT nbuf = 0, bufdist, n, vl;
      INT ivs, ovs, ioffset, roffset, id, od;
 
      static const plan_adt padt = {
-	  fftwf_rdft2_solve, awake, print, destroy
+	  X(rdft2_solve), awake, print, destroy
      };
 
      if (!applicable(ego, p_, plnr))
           goto nada;
 
-     n = fftwf_tensor_sz(p->sz);
-     fftwf_tensor_tornk1(p->vecsz, &vl, &ivs, &ovs);
+     n = X(tensor_sz)(p->sz);
+     X(tensor_tornk1)(p->vecsz, &vl, &ivs, &ovs);
 
-     nbuf = fftwf_nbuf(n, vl, maxnbufs[ego->maxnbuf_ndx]);
-     bufdist = fftwf_bufdist(n + 2, vl); /* complex-side rdft2 stores N+2
+     nbuf = X(nbuf)(n, vl, maxnbufs[ego->maxnbuf_ndx]);
+     bufdist = X(bufdist)(n + 2, vl); /* complex-side rdft2 stores N+2
 					 real numbers */
      A(nbuf > 0);
 
@@ -231,75 +254,75 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      ioffset = 1 - roffset;
 
      /* initial allocation for the purpose of planning */
-     bufs = (float *) MALLOC(sizeof(float) * nbuf * bufdist, BUFFERS);
+     bufs = (R *) MALLOC(sizeof(R) * nbuf * bufdist, BUFFERS);
 
      id = ivs * (nbuf * (vl / nbuf));
      od = ovs * (nbuf * (vl / nbuf));
 
      if (p->kind == R2HC) {
 	  /* allow destruction of input if problem is in place */
-	  cld = fftwf_mkplan_f_d(
-	       plnr,
-	       fftwf_mkproblem_rdft2_d(
-		    fftwf_mktensor_1d(n, p->sz->dims[0].is, 2),
-		    fftwf_mktensor_1d(nbuf, ivs, bufdist),
+	  cld = X(mkplan_f_d)(
+	       plnr, 
+	       X(mkproblem_rdft2_d)(
+		    X(mktensor_1d)(n, p->sz->dims[0].is, 2),
+		    X(mktensor_1d)(nbuf, ivs, bufdist),
 		    TAINT(p->r0, ivs * nbuf), TAINT(p->r1, ivs * nbuf),
 		    bufs + roffset, bufs + ioffset, p->kind),
 	       0, 0, (p->r0 == p->cr) ? NO_DESTROY_INPUT : 0);
 	  if (!cld) goto nada;
 
 	  /* copying back from the buffer is a rank-0 DFT: */
-	  cldcpy = fftwf_mkplan_d(
-	       plnr,
-	       fftwf_mkproblem_dft_d(
-		    fftwf_mktensor_0d(),
-		    fftwf_mktensor_2d(nbuf, bufdist, ovs,
+	  cldcpy = X(mkplan_d)(
+	       plnr, 
+	       X(mkproblem_dft_d)(
+		    X(mktensor_0d)(),
+		    X(mktensor_2d)(nbuf, bufdist, ovs,
 				   n/2+1, 2, p->sz->dims[0].os),
 		    bufs + roffset, bufs + ioffset,
 		    TAINT(p->cr, ovs * nbuf), TAINT(p->ci, ovs * nbuf) ));
 	  if (!cldcpy) goto nada;
 
-	  fftwf_ifree(bufs); bufs = 0;
+	  X(ifree)(bufs); bufs = 0;
 
-	  cldrest = fftwf_mkplan_d(plnr,
-				fftwf_mkproblem_rdft2_d(
-				     fftwf_tensor_copy(p->sz),
-				     fftwf_mktensor_1d(vl % nbuf, ivs, ovs),
-				     p->r0 + id, p->r1 + id,
+	  cldrest = X(mkplan_d)(plnr, 
+				X(mkproblem_rdft2_d)(
+				     X(tensor_copy)(p->sz),
+				     X(mktensor_1d)(vl % nbuf, ivs, ovs),
+				     p->r0 + id, p->r1 + id, 
 				     p->cr + od, p->ci + od,
 				     p->kind));
 	  if (!cldrest) goto nada;
 	  pln = MKPLAN_RDFT2(P, &padt, apply_r2hc);
      } else {
 	  /* allow destruction of buffer */
-	  cld = fftwf_mkplan_f_d(
-	       plnr,
-	       fftwf_mkproblem_rdft2_d(
-		    fftwf_mktensor_1d(n, 2, p->sz->dims[0].os),
-		    fftwf_mktensor_1d(nbuf, bufdist, ovs),
+	  cld = X(mkplan_f_d)(
+	       plnr, 
+	       X(mkproblem_rdft2_d)(
+		    X(mktensor_1d)(n, 2, p->sz->dims[0].os),
+		    X(mktensor_1d)(nbuf, bufdist, ovs),
 		    TAINT(p->r0, ovs * nbuf), TAINT(p->r1, ovs * nbuf),
 		    bufs + roffset, bufs + ioffset, p->kind),
 	       0, 0, NO_DESTROY_INPUT);
 	  if (!cld) goto nada;
 
 	  /* copying input into buffer is a rank-0 DFT: */
-	  cldcpy = fftwf_mkplan_d(
-	       plnr,
-	       fftwf_mkproblem_dft_d(
-		    fftwf_mktensor_0d(),
-		    fftwf_mktensor_2d(nbuf, ivs, bufdist,
+	  cldcpy = X(mkplan_d)(
+	       plnr, 
+	       X(mkproblem_dft_d)(
+		    X(mktensor_0d)(),
+		    X(mktensor_2d)(nbuf, ivs, bufdist,
 				   n/2+1, p->sz->dims[0].is, 2),
-		    TAINT(p->cr, ivs * nbuf), TAINT(p->ci, ivs * nbuf),
+		    TAINT(p->cr, ivs * nbuf), TAINT(p->ci, ivs * nbuf), 
 		    bufs + roffset, bufs + ioffset));
 	  if (!cldcpy) goto nada;
 
-	  fftwf_ifree(bufs); bufs = 0;
+	  X(ifree)(bufs); bufs = 0;
 
-	  cldrest = fftwf_mkplan_d(plnr,
-				fftwf_mkproblem_rdft2_d(
-				     fftwf_tensor_copy(p->sz),
-				     fftwf_mktensor_1d(vl % nbuf, ivs, ovs),
-				     p->r0 + od, p->r1 + od,
+	  cldrest = X(mkplan_d)(plnr, 
+				X(mkproblem_rdft2_d)(
+				     X(tensor_copy)(p->sz),
+				     X(mktensor_1d)(vl % nbuf, ivs, ovs),
+				     p->r0 + od, p->r1 + od, 
 				     p->cr + id, p->ci + id,
 				     p->kind));
 	  if (!cldrest) goto nada;
@@ -322,17 +345,17 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 
      {
 	  opcnt t;
-	  fftwf_ops_add(&cld->ops, &cldcpy->ops, &t);
-	  fftwf_ops_madd(vl / nbuf, &t, &cldrest->ops, &pln->super.super.ops);
+	  X(ops_add)(&cld->ops, &cldcpy->ops, &t);
+	  X(ops_madd)(vl / nbuf, &t, &cldrest->ops, &pln->super.super.ops);
      }
 
      return &(pln->super.super);
 
  nada:
-     fftwf_ifree0(bufs);
-     fftwf_plan_destroy_internal(cldrest);
-     fftwf_plan_destroy_internal(cldcpy);
-     fftwf_plan_destroy_internal(cld);
+     X(ifree0)(bufs);
+     X(plan_destroy_internal)(cldrest);
+     X(plan_destroy_internal)(cldcpy);
+     X(plan_destroy_internal)(cld);
      return (plan *) 0;
 }
 
@@ -344,7 +367,7 @@ static solver *mksolver(int maxnbuf_ndx)
      return &(slv->super);
 }
 
-void fftwf_rdft2_buffered_register(planner *p)
+void X(rdft2_buffered_register)(planner *p)
 {
      size_t i;
      for (i = 0; i < NELEM(maxnbufs); ++i)

@@ -20,8 +20,7 @@
 
 #include "api.h"
 
-fftwf_plan fftwf_plan_dft_r2c_1d(int n, float *in, fftwf_complex *out,unsigned flags)
+X(plan) X(plan_dft_r2c_1d)(int n, R *in, C *out, unsigned flags)
 {
-     return fftwf_plan_dft_r2c(1, &n, in, out, flags);
+     return X(plan_dft_r2c)(1, &n, in, out, flags);
 }
-

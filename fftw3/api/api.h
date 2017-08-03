@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -51,48 +51,63 @@
 
 #include "fftw3.h"
 #include "../kernel/ifftw.h"
+#include "../rdft/rdft.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif /* __cplusplus */
 
 /* the API ``plan'' contains both the kernel plan and problem */
-struct fftwf_plan_s {
+struct X(plan_s) {
      plan *pln;
      problem *prb;
      int sign;
 };
 
 /* shorthand */
-typedef struct fftwf_plan_s apiplan;
+typedef struct X(plan_s) apiplan;
 
 /* complex type for internal use */
-//typedef float fftwf_complex[2];
+typedef R C[2];
 
-#define EXTRACT_REIM(sign, c, r, i) fftwf_extract_reim(sign, (c)[0], r, i)
+#define EXTRACT_REIM(sign, c, r, i) X(extract_reim)(sign, (c)[0], r, i)
 
 #define TAINT_UNALIGNED(p, flg) TAINT(p, ((flg) & FFTW_UNALIGNED) != 0)
 
-tensor *fftwf_mktensor_rowmajor(int rnk, const int *n,
+tensor *X(mktensor_rowmajor)(int rnk, const int *n,
 			     const int *niphys, const int *nophys,
 			     int is, int os);
 
-tensor *fftwf_mktensor_iodims(int rank, const fftwf_iodim *dims, int is, int os);
-tensor *fftwf_mktensor_iodims64(int rank, const fftwf_iodim64 *dims, int is, int os);
-const int *fftwf_rdft2_pad(int rnk, const int *n, const int *nembed,
+tensor *X(mktensor_iodims)(int rank, const X(iodim) *dims, int is, int os);
+tensor *X(mktensor_iodims64)(int rank, const X(iodim64) *dims, int is, int os);
+const int *X(rdft2_pad)(int rnk, const int *n, const int *nembed,
 			int inplace, int cmplx, int **nfree);
 
-int fftwf_many_kosherp(int rnk, const int *n, int howmany);
-int fftwf_guru_kosherp(int rank, const fftwf_iodim *dims,
-		    int howmany_rank, const fftwf_iodim *howmany_dims);
-int fftwf_guru64_kosherp(int rank, const fftwf_iodim64 *dims,
-		    int howmany_rank, const fftwf_iodim64 *howmany_dims);
+int X(many_kosherp)(int rnk, const int *n, int howmany);
+int X(guru_kosherp)(int rank, const X(iodim) *dims,
+		    int howmany_rank, const X(iodim) *howmany_dims);
+int X(guru64_kosherp)(int rank, const X(iodim64) *dims,
+		    int howmany_rank, const X(iodim64) *howmany_dims);
 
 /* Note: FFTW_EXTERN is used for "internal" functions used in tests/hook.c */
 
-FFTW_EXTERN printer *fftwf_mkprinter_file(FILE *f);
+FFTW_EXTERN printer *X(mkprinter_file)(FILE *f);
 
-FFTW_EXTERN planner *fftwf_the_planner(void);
-void fftwf_configure_planner(planner *plnr);
+printer *X(mkprinter_cnt)(int *cnt);
+printer *X(mkprinter_str)(char *s);
 
-void fftwf_mapflags(planner *, unsigned);
+FFTW_EXTERN planner *X(the_planner)(void);
+void X(configure_planner)(planner *plnr);
 
-apiplan *fftwf_mkapiplan(int sign, unsigned flags, problem *prb);
+void X(mapflags)(planner *, unsigned);
+
+apiplan *X(mkapiplan)(int sign, unsigned flags, problem *prb);
+
+rdft_kind *X(map_r2r_kind)(int rank, const X(r2r_kind) * kind);
+
+#ifdef __cplusplus
+}  /* extern "C" */
+#endif /* __cplusplus */
 
 #endif				/* __API_H__ */

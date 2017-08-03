@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,30 +14,25 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
 #include "api.h"
 
-static plan *mkplan0(planner *plnr, unsigned flags,
-		     const problem *prb, int hash_info,
+static plan *mkplan0(planner *plnr, unsigned flags, 
+		     const problem *prb, int hash_info, 
 		     wisdom_state_t wisdom_state)
-WITH_ALIGNED_STACK({
+{
      /* map API flags into FFTW flags */
-     fftwf_mapflags(plnr, flags);
+     X(mapflags)(plnr, flags);
 
      plnr->flags.hash_info = hash_info;
      plnr->wisdom_state = wisdom_state;
 
      /* create plan */
      return plnr->adt->mkplan(plnr, prb);
-})
-
-static void aligned_awake(plan *ego, enum wakefulness wakefulness)
-WITH_ALIGNED_STACK({
-     fftwf_plan_awake(ego, wakefulness);
-})
+}
 
 static unsigned force_estimator(unsigned flags)
 {
@@ -45,7 +40,7 @@ static unsigned force_estimator(unsigned flags)
      return (flags | FFTW_ESTIMATE);
 }
 
-static plan *mkplan(planner *plnr, unsigned flags,
+static plan *mkplan(planner *plnr, unsigned flags, 
 		    const problem *prb, int hash_info)
 {
      plan *pln;
@@ -55,7 +50,7 @@ static plan *mkplan(planner *plnr, unsigned flags,
      if (plnr->wisdom_state == WISDOM_NORMAL && !pln) {
 	  /* maybe the planner failed because of inconsistent wisdom;
 	     plan again ignoring infeasible wisdom */
-	  pln = mkplan0(plnr, force_estimator(flags), prb,
+	  pln = mkplan0(plnr, force_estimator(flags), prb, 
 			hash_info, WISDOM_IGNORE_INFEASIBLE);
      }
 
@@ -72,7 +67,7 @@ static plan *mkplan(planner *plnr, unsigned flags,
 	       plnr->adt->forget(plnr, FORGET_EVERYTHING);
 
 	       A(!pln);
-	       pln = mkplan0(plnr, force_estimator(flags),
+	       pln = mkplan0(plnr, force_estimator(flags), 
 			     prb, hash_info, WISDOM_IGNORE_ALL);
 	  }
      }
@@ -80,15 +75,16 @@ static plan *mkplan(planner *plnr, unsigned flags,
      return pln;
 }
 
-apiplan *fftwf_mkapiplan (int sign, unsigned flags, problem *prb)
+apiplan *X(mkapiplan)(int sign, unsigned flags, problem *prb)
 {
      apiplan *p = 0;
      plan *pln;
      unsigned flags_used_for_planning;
-     planner *plnr = fftwf_the_planner();
+     planner *plnr = X(the_planner)();
      unsigned int pats[] = {FFTW_ESTIMATE, FFTW_MEASURE,
 			    FFTW_PATIENT, FFTW_EXHAUSTIVE};
      int pat, pat_max;
+     double pcost = 0;
 
      if (flags & FFTW_WISDOM_ONLY) {
 	  /* Special mode that returns a plan only if wisdom is present,
@@ -102,11 +98,11 @@ apiplan *fftwf_mkapiplan (int sign, unsigned flags, problem *prb)
 		(flags & FFTW_PATIENT ? 2 : 1));
 	  pat = plnr->timelimit >= 0 ? 0 : pat_max;
 
-	  flags &= ~(FFTW_ESTIMATE | FFTW_MEASURE |
+	  flags &= ~(FFTW_ESTIMATE | FFTW_MEASURE | 
 		     FFTW_PATIENT | FFTW_EXHAUSTIVE);
 
-	  plnr->start_time = fftwf_get_crude_time();
-
+	  plnr->start_time = X(get_crude_time)();
+	  
 	  /* plan at incrementally increasing patience until we run
 	     out of time */
 	  for (pln = 0, flags_used_for_planning = 0; pat <= pat_max; ++pat) {
@@ -120,9 +116,10 @@ apiplan *fftwf_mkapiplan (int sign, unsigned flags, problem *prb)
 		    break;
 	       }
 
-	       fftwf_plan_destroy_internal(pln);
+	       X(plan_destroy_internal)(pln);
 	       pln = pln1;
 	       flags_used_for_planning = tmpflags;
+	       pcost = pln->pcost;
 	  }
      }
 
@@ -131,37 +128,44 @@ apiplan *fftwf_mkapiplan (int sign, unsigned flags, problem *prb)
 	  p = (apiplan *) MALLOC(sizeof(apiplan), PLANS);
 	  p->prb = prb;
 	  p->sign = sign; /* cache for execute_dft */
-
+	  
 	  /* re-create plan from wisdom, adding blessing */
 	  p->pln = mkplan(plnr, flags_used_for_planning, prb, BLESSING);
 
-	  if (sizeof(trigreal) > sizeof(float)) {
+	  /* record pcost from most recent measurement for use in X(cost) */
+	  p->pln->pcost = pcost;
+
+	  if (sizeof(trigreal) > sizeof(R)) {
 	       /* this is probably faster, and we have enough trigreal
 		  bits to maintain accuracy */
-	       aligned_awake(p->pln, AWAKE_SQRTN_TABLE);
+	       X(plan_awake)(p->pln, AWAKE_SQRTN_TABLE);
 	  } else {
 	       /* more accurate */
-	       aligned_awake(p->pln, AWAKE_SINCOS);
+	       X(plan_awake)(p->pln, AWAKE_SINCOS);
 	  }
-
+	  
 	  /* we don't use pln for p->pln, above, since by re-creating the
 	     plan we might use more patient wisdom from a timed-out mkplan */
-	  fftwf_plan_destroy_internal(pln);
+	  X(plan_destroy_internal)(pln);
      } else
-	  fftwf_problem_destroy(prb);
-
+	  X(problem_destroy)(prb);
+     
      /* discard all information not necessary to reconstruct the plan */
      plnr->adt->forget(plnr, FORGET_ACCURSED);
 
+#ifdef FFTW_RANDOM_ESTIMATOR
+     X(random_estimate_seed)++; /* subsequent "random" plans are distinct */
+#endif
+     
      return p;
 }
 
-void fftwf_destroy_plan(fftwf_plan p)
+void X(destroy_plan)(X(plan) p)
 {
      if (p) {
-          fftwf_plan_awake (p->pln, SLEEPY);
-          fftwf_plan_destroy_internal (p->pln);
-          fftwf_problem_destroy (p->prb);
-          fftwf_ifree(p);
+          X(plan_awake)(p->pln, SLEEPY);
+          X(plan_destroy_internal)(p->pln);
+          X(problem_destroy)(p->prb);
+          X(ifree)(p);
      }
 }

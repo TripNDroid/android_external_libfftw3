@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -50,7 +50,7 @@ typedef struct {
 
 /* Compute multi-dimensional RDFT by applying the two cld plans
    (lower-rnk RDFTs). */
-static void apply(const plan *ego_, float *I, float *O)
+static void apply(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      plan_rdft *cld1, *cld2;
@@ -66,15 +66,15 @@ static void apply(const plan *ego_, float *I, float *O)
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cld1, wakefulness);
-     fftwf_plan_awake(ego->cld2, wakefulness);
+     X(plan_awake)(ego->cld1, wakefulness);
+     X(plan_awake)(ego->cld2, wakefulness);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld2);
-     fftwf_plan_destroy_internal(ego->cld1);
+     X(plan_destroy_internal)(ego->cld2);
+     X(plan_destroy_internal)(ego->cld1);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -88,7 +88,7 @@ static void print(const plan *ego_, printer *p)
 static int picksplit(const S *ego, const tensor *sz, int *rp)
 {
      A(sz->rnk > 1); /* cannot split rnk <= 1 */
-     if (!fftwf_pickdim(ego->spltrnk, ego->buddies, ego->nbuddies, sz, 1, rp))
+     if (!X(pickdim)(ego->spltrnk, ego->buddies, ego->nbuddies, sz, 1, rp))
 	  return 0;
      *rp += 1; /* convert from dim. index to rank */
      if (*rp >= sz->rnk) /* split must reduce rank */
@@ -108,7 +108,7 @@ static int applicable0(const solver *ego_, const problem *p_, int *rp)
 }
 
 /* TODO: revise this. */
-static int applicable(const solver *ego_, const problem *p_,
+static int applicable(const solver *ego_, const problem *p_, 
 		      const planner *plnr, int *rp)
 {
      const S *ego = (const S *)ego_;
@@ -125,7 +125,7 @@ static int applicable(const solver *ego_, const problem *p_,
 	  const problem_rdft *p = (const problem_rdft *) p_;
 
 	  if (p->vecsz->rnk > 0 &&
-	      fftwf_tensor_min_stride(p->vecsz) > fftwf_tensor_max_index(p->sz))
+	      X(tensor_min_stride)(p->vecsz) > X(tensor_max_index)(p->sz))
 	       return 0;
      }
 
@@ -142,27 +142,27 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      int spltrnk;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr, &spltrnk))
           return (plan *) 0;
 
      p = (const problem_rdft *) p_;
-     fftwf_tensor_split(p->sz, &sz1, spltrnk, &sz2);
-     vecszi = fftwf_tensor_copy_inplace(p->vecsz, INPLACE_OS);
-     sz2i = fftwf_tensor_copy_inplace(sz2, INPLACE_OS);
+     X(tensor_split)(p->sz, &sz1, spltrnk, &sz2);
+     vecszi = X(tensor_copy_inplace)(p->vecsz, INPLACE_OS);
+     sz2i = X(tensor_copy_inplace)(sz2, INPLACE_OS);
 
-     cld1 = fftwf_mkplan_d(plnr,
-			fftwf_mkproblem_rdft_d(fftwf_tensor_copy(sz2),
-					    fftwf_tensor_append(p->vecsz, sz1),
+     cld1 = X(mkplan_d)(plnr, 
+			X(mkproblem_rdft_d)(X(tensor_copy)(sz2),
+					    X(tensor_append)(p->vecsz, sz1),
 					    p->I, p->O, p->kind + spltrnk));
      if (!cld1) goto nada;
 
-     cld2 = fftwf_mkplan_d(plnr,
-			fftwf_mkproblem_rdft_d(
-			     fftwf_tensor_copy_inplace(sz1, INPLACE_OS),
-			     fftwf_tensor_append(vecszi, sz2i),
+     cld2 = X(mkplan_d)(plnr, 
+			X(mkproblem_rdft_d)(
+			     X(tensor_copy_inplace)(sz1, INPLACE_OS),
+			     X(tensor_append)(vecszi, sz2i),
 			     p->O, p->O, p->kind));
      if (!cld2) goto nada;
 
@@ -172,16 +172,16 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->cld2 = cld2;
 
      pln->solver = ego;
-     fftwf_ops_add(&cld1->ops, &cld2->ops, &pln->super.super.ops);
+     X(ops_add)(&cld1->ops, &cld2->ops, &pln->super.super.ops);
 
-     fftwf_tensor_destroy4(sz2, sz1, vecszi, sz2i);
+     X(tensor_destroy4)(sz2, sz1, vecszi, sz2i);
 
      return &(pln->super.super);
 
  nada:
-     fftwf_plan_destroy_internal(cld2);
-     fftwf_plan_destroy_internal(cld1);
-     fftwf_tensor_destroy4(sz2, sz1, vecszi, sz2i);
+     X(plan_destroy_internal)(cld2);
+     X(plan_destroy_internal)(cld1);
+     X(tensor_destroy4)(sz2, sz1, vecszi, sz2i);
      return (plan *) 0;
 }
 
@@ -195,7 +195,7 @@ static solver *mksolver(int spltrnk, const int *buddies, int nbuddies)
      return &(slv->super);
 }
 
-void fftwf_rdft_rank_geq2_register(planner *p)
+void X(rdft_rank_geq2_register)(planner *p)
 {
      int i;
      static const int buddies[] = { 1, 0, -2 };

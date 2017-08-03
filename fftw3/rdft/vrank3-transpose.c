@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -65,7 +65,7 @@ static INT gcd(INT a, INT b)
 	  a = b;
 	  b = r;
      } while (r != 0);
-
+     
      return a;
 }
 
@@ -96,7 +96,7 @@ static int pickdim(const tensor *s, int *pdim0, int *pdim1, int *pdim2)
 	       int dim2 = 3 - dim0 - dim1;
 	       if (dim0 == dim1) continue;
                if ((s->rnk == 2 || s->dims[dim2].is == s->dims[dim2].os)
-		   && transposable(s->dims + dim0, s->dims + dim1,
+		   && transposable(s->dims + dim0, s->dims + dim1, 
 				   s->rnk == 2 ? (INT)1 : s->dims[dim2].n,
 				   s->rnk == 2 ? (INT)1 : s->dims[dim2].is)) {
                     *pdim0 = dim0;
@@ -128,20 +128,20 @@ static int applicable(const solver *ego_, const problem *p_, planner *plnr,
 	     /* UGLY if vecloop in wrong order for locality */
 	     && (!NO_UGLYP(plnr) ||
 		 p->vecsz->rnk == 2 ||
-		 fftwf_iabs(p->vecsz->dims[*dim2].is)
-		 < fftwf_imax(fftwf_iabs(p->vecsz->dims[*dim0].is),
-			   fftwf_iabs(p->vecsz->dims[*dim0].os)))
+		 X(iabs)(p->vecsz->dims[*dim2].is)
+		 < X(imax)(X(iabs)(p->vecsz->dims[*dim0].is),
+			   X(iabs)(p->vecsz->dims[*dim0].os)))
 
 	     /* SLOW if non-square */
 	     && (!NO_SLOWP(plnr)
 		 || p->vecsz->dims[*dim0].n == p->vecsz->dims[*dim1].n)
-
+		      
 	     && ego->adt->applicable(p, plnr, *dim0,*dim1,*dim2,nbuf)
 
 	     /* buffers too big are UGLY */
 	     && ((!NO_UGLYP(plnr) && !CONSERVE_MEMORYP(plnr))
 		 || *nbuf <= MAXBUF
-		 || *nbuf * MINBUFDIV <= fftwf_tensor_sz(p->vecsz))
+		 || *nbuf * MINBUFDIV <= X(tensor_sz)(p->vecsz))
 	  );
 }
 
@@ -153,11 +153,11 @@ static void get_transpose_vec(const problem_rdft *p, int dim2, INT *vl,INT *vs)
      else {
 	  *vl = p->vecsz->dims[dim2].n;
 	  *vs = p->vecsz->dims[dim2].is; /* == os */
-     }
+     }  
 }
 
 /*************************************************************************/
-/* Cache-oblivious in-place transpose of non-square matrices, based
+/* Cache-oblivious in-place transpose of non-square matrices, based 
    on transposes of blocks given by the gcd of the dimensions.
 
    This algorithm is related to algorithm V5 from Murray Dow,
@@ -165,25 +165,25 @@ static void get_transpose_vec(const problem_rdft *p, int dim2, INT *vl,INT *vs)
    (12), 1997-2005 (1995), with the modification that we use
    cache-oblivious recursive transpose subroutines (and we derived
    it independently).
-
+   
    For a p x q matrix, this requires scratch space equal to the size
    of the matrix divided by gcd(p,q).  Alternatively, see also the
    "cut" algorithm below, if |p-q| * gcd(p,q) < max(p,q). */
 
-static void apply_gcd(const plan *ego_, float *I, float *O)
+static void apply_gcd(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT n = ego->nd, m = ego->md, d = ego->d;
      INT vl = ego->vl;
-     float *buf = (float *)MALLOC(sizeof(float) * ego->nbuf, BUFFERS);
+     R *buf = (R *)MALLOC(sizeof(R) * ego->nbuf, BUFFERS);
      INT i, num_el = n*m*d*vl;
 
      A(ego->n == n * d && ego->m == m * d);
      UNUSED(O);
 
      /* Transpose the matrix I in-place, where I is an (n*d) x (m*d) matrix
-	of vl-tuples and buf contains n*m*d*vl elements.
-
+	of vl-tuples and buf contains n*m*d*vl elements.  
+	
 	In general, to transpose a p x q matrix, you should call this
 	routine with d = gcd(p, q), n = p/d, and m = q/d.  */
 
@@ -191,7 +191,7 @@ static void apply_gcd(const plan *ego_, float *I, float *O)
      A(d > 1);
 
      /* treat as (d x n) x (d' x m) matrix.  (d' = d) */
-
+     
      /* First, transpose d x (n x d') x m to d x (d' x n) x m,
 	using the buf matrix.  This consists of d transposes
 	of contiguous n x d' matrices of m-tuples. */
@@ -199,17 +199,17 @@ static void apply_gcd(const plan *ego_, float *I, float *O)
 	  rdftapply cldapply = ((plan_rdft *) ego->cld1)->apply;
 	  for (i = 0; i < d; ++i) {
 	       cldapply(ego->cld1, I + i*num_el, buf);
-	       memcpy(I + i*num_el, buf, num_el*sizeof(float));
+	       memcpy(I + i*num_el, buf, num_el*sizeof(R));
 	  }
      }
-
+     
      /* Now, transpose (d x d') x (n x m) to (d' x d) x (n x m), which
 	is a square in-place transpose of n*m-tuples: */
      {
 	  rdftapply cldapply = ((plan_rdft *) ego->cld2)->apply;
 	  cldapply(ego->cld2, I, I);
      }
-
+     
      /* Finally, transpose d' x ((d x n) x m) to d' x (m x (d x n)),
 	using the buf matrix.  This consists of d' transposes
 	of contiguous d*n x m matrices. */
@@ -217,11 +217,11 @@ static void apply_gcd(const plan *ego_, float *I, float *O)
 	  rdftapply cldapply = ((plan_rdft *) ego->cld3)->apply;
 	  for (i = 0; i < d; ++i) {
 	       cldapply(ego->cld3, I + i*num_el, buf);
-	       memcpy(I + i*num_el, buf, num_el*sizeof(float));
+	       memcpy(I + i*num_el, buf, num_el*sizeof(R));
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 static int applicable_gcd(const problem_rdft *p, planner *plnr,
@@ -245,51 +245,51 @@ static int mkcldrn_gcd(const problem_rdft *p, planner *plnr, P *ego)
 {
      INT n = ego->nd, m = ego->md, d = ego->d;
      INT vl = ego->vl;
-     float *buf = (float *)MALLOC(sizeof(float) * ego->nbuf, BUFFERS);
+     R *buf = (R *)MALLOC(sizeof(R) * ego->nbuf, BUFFERS);
      INT num_el = n*m*d*vl;
 
      if (n > 1) {
-	  ego->cld1 = fftwf_mkplan_d(plnr,
-				  fftwf_mkproblem_rdft_0_d(
-				       fftwf_mktensor_3d(n, d*m*vl, m*vl,
+	  ego->cld1 = X(mkplan_d)(plnr,
+				  X(mkproblem_rdft_0_d)(
+				       X(mktensor_3d)(n, d*m*vl, m*vl,
 						      d, m*vl, n*m*vl,
 						      m*vl, 1, 1),
 				       TAINT(p->I, num_el), buf));
 	  if (!ego->cld1)
 	       goto nada;
-	  fftwf_ops_madd(d, &ego->cld1->ops, &ego->super.super.ops,
+	  X(ops_madd)(d, &ego->cld1->ops, &ego->super.super.ops,
 		      &ego->super.super.ops);
 	  ego->super.super.ops.other += num_el * d * 2;
      }
 
-     ego->cld2 = fftwf_mkplan_d(plnr,
-			     fftwf_mkproblem_rdft_0_d(
-				  fftwf_mktensor_3d(d, d*n*m*vl, n*m*vl,
+     ego->cld2 = X(mkplan_d)(plnr,
+			     X(mkproblem_rdft_0_d)(
+				  X(mktensor_3d)(d, d*n*m*vl, n*m*vl,
 						 d, n*m*vl, d*n*m*vl,
 						 n*m*vl, 1, 1),
 				  p->I, p->I));
      if (!ego->cld2)
 	  goto nada;
-     fftwf_ops_add2(&ego->cld2->ops, &ego->super.super.ops);
+     X(ops_add2)(&ego->cld2->ops, &ego->super.super.ops);
 
      if (m > 1) {
-	  ego->cld3 = fftwf_mkplan_d(plnr,
-				  fftwf_mkproblem_rdft_0_d(
-				       fftwf_mktensor_3d(d*n, m*vl, vl,
+	  ego->cld3 = X(mkplan_d)(plnr,
+				  X(mkproblem_rdft_0_d)(
+				       X(mktensor_3d)(d*n, m*vl, vl,
 						      m, vl, d*n*vl,
 						      vl, 1, 1),
 				       TAINT(p->I, num_el), buf));
 	  if (!ego->cld3)
 	       goto nada;
-	  fftwf_ops_madd2(d, &ego->cld3->ops, &ego->super.super.ops);
+	  X(ops_madd2)(d, &ego->cld3->ops, &ego->super.super.ops);
 	  ego->super.super.ops.other += num_el * d * 2;
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
      return 1;
 
  nada:
-     fftwf_ifree(buf);
+     X(ifree)(buf);
      return 0;
 }
 
@@ -321,27 +321,27 @@ static const transpose_adt adt_gcd =
    square, but has a large gcd (and can therefore use transpose-gcd).
 */
 
-static void apply_cut(const plan *ego_, float *I, float *O)
+static void apply_cut(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT n = ego->n, m = ego->m, nc = ego->nc, mc = ego->mc, vl = ego->vl;
      INT i;
-     float *buf1 = (float *)MALLOC(sizeof(float) * ego->nbuf, BUFFERS);
+     R *buf1 = (R *)MALLOC(sizeof(R) * ego->nbuf, BUFFERS);
      UNUSED(O);
 
      if (m > mc) {
 	  ((plan_rdft *) ego->cld1)->apply(ego->cld1, I + mc*vl, buf1);
 	  for (i = 0; i < nc; ++i)
-	       memmove(I + (mc*vl) * i, I + (m*vl) * i, sizeof(float) * (mc*vl));
+	       memmove(I + (mc*vl) * i, I + (m*vl) * i, sizeof(R) * (mc*vl));
      }
 
      ((plan_rdft *) ego->cld2)->apply(ego->cld2, I, I); /* nc x mc transpose */
-
+     
      if (n > nc) {
-	  float *buf2 = buf1 + (m-mc)*(nc*vl); /* FIXME: force better alignment? */
-	  memcpy(buf2, I + nc*(m*vl), (n-nc)*(m*vl)*sizeof(float));
+	  R *buf2 = buf1 + (m-mc)*(nc*vl); /* FIXME: force better alignment? */
+	  memcpy(buf2, I + nc*(m*vl), (n-nc)*(m*vl)*sizeof(R));
 	  for (i = mc-1; i >= 0; --i)
-	       memmove(I + (n*vl) * i, I + (nc*vl) * i, sizeof(float) * (n*vl));
+	       memmove(I + (n*vl) * i, I + (nc*vl) * i, sizeof(R) * (n*vl));
 	  ((plan_rdft *) ego->cld3)->apply(ego->cld3, buf2, I + nc*vl);
      }
 
@@ -349,19 +349,19 @@ static void apply_cut(const plan *ego_, float *I, float *O)
 	  if (n > nc)
 	       for (i = mc; i < m; ++i)
 		    memcpy(I + i*(n*vl), buf1 + (i-mc)*(nc*vl),
-			   (nc*vl)*sizeof(float));
+			   (nc*vl)*sizeof(R));
 	  else
-	       memcpy(I + mc*(n*vl), buf1, (m-mc)*(n*vl)*sizeof(float));
+	       memcpy(I + mc*(n*vl), buf1, (m-mc)*(n*vl)*sizeof(R));
      }
 
-     fftwf_ifree(buf1);
+     X(ifree)(buf1);
 }
 
 /* only cut one dimension if the resulting buffer is small enough */
 static int cut1(INT n, INT m, INT vl)
 {
-     return (fftwf_imax(n,m) >= fftwf_iabs(n-m) * MINBUFDIV
-	     || fftwf_imin(n,m) * fftwf_iabs(n-m) * vl <= MAXBUF);
+     return (X(imax)(n,m) >= X(iabs)(n-m) * MINBUFDIV
+	     || X(imin)(n,m) * X(iabs)(n-m) * vl <= MAXBUF);
 }
 
 #define CUT_NSRCH 32 /* range of sizes to search for possible cuts */
@@ -377,13 +377,13 @@ static int applicable_cut(const problem_rdft *p, planner *plnr,
      A(MINBUFDIV <= CUT_NSRCH); /* assumed to avoid inf. loops below */
      return (!NO_SLOWP(plnr) /* FIXME: not really SLOW for large 1d ffts? */
 	     && n != m
-
+	     
 	     /* Don't call transpose-cut recursively (avoid inf. loops):
 	        the non-square sub-transpose produced when !cut1
 	        should always have gcd(n,m) >= min(CUT_NSRCH,n,m),
 	        for which transpose-gcd is applicable */
 	     && (cut1(n, m, vl)
-		 || gcd(n, m) < fftwf_imin(MINBUFDIV, fftwf_imin(n,m)))
+		 || gcd(n, m) < X(imin)(MINBUFDIV, X(imin)(n,m)))
 
 	     && Ntuple_transposable(p->vecsz->dims + dim0,
 				    p->vecsz->dims + dim1,
@@ -394,11 +394,11 @@ static int mkcldrn_cut(const problem_rdft *p, planner *plnr, P *ego)
 {
      INT n = ego->n, m = ego->m, nc, mc;
      INT vl = ego->vl;
-     float *buf;
+     R *buf;
 
      /* pick the "best" cut */
      if (cut1(n, m, vl)) {
-	  nc = mc = fftwf_imin(n,m);
+	  nc = mc = X(imin)(n,m);
      }
      else {
 	  INT dc, ns, ms;
@@ -410,64 +410,64 @@ static int mkcldrn_cut(const problem_rdft *p, planner *plnr, P *ego)
 		    INT ds = gcd(ms, ns);
 		    if (ds > dc) {
 			 dc = ds; nc = ns; mc = ms;
-			 if (dc == fftwf_imin(ns, ms))
+			 if (dc == X(imin)(ns, ms))
 			      break; /* cannot get larger than this */
 		    }
 	       }
-	       if (dc == fftwf_imin(n, ms))
+	       if (dc == X(imin)(n, ms))
 		    break; /* cannot get larger than this */
 	  }
-	  A(dc >= fftwf_imin(CUT_NSRCH, fftwf_imin(n, m)));
+	  A(dc >= X(imin)(CUT_NSRCH, X(imin)(n, m)));
      }
      ego->nc = nc;
      ego->mc = mc;
      ego->nbuf = (m-mc)*(nc*vl) + (n-nc)*(m*vl);
 
-     buf = (float *)MALLOC(sizeof(float) * ego->nbuf, BUFFERS);
+     buf = (R *)MALLOC(sizeof(R) * ego->nbuf, BUFFERS);
 
      if (m > mc) {
-	  ego->cld1 = fftwf_mkplan_d(plnr,
-				  fftwf_mkproblem_rdft_0_d(
-				       fftwf_mktensor_3d(nc, m*vl, vl,
+	  ego->cld1 = X(mkplan_d)(plnr,
+				  X(mkproblem_rdft_0_d)(
+				       X(mktensor_3d)(nc, m*vl, vl,
 						      m-mc, vl, nc*vl,
 						      vl, 1, 1),
 				       p->I + mc*vl, buf));
 	  if (!ego->cld1)
 	       goto nada;
-	  fftwf_ops_add2(&ego->cld1->ops, &ego->super.super.ops);
+	  X(ops_add2)(&ego->cld1->ops, &ego->super.super.ops);
      }
 
-     ego->cld2 = fftwf_mkplan_d(plnr,
-			     fftwf_mkproblem_rdft_0_d(
-				  fftwf_mktensor_3d(nc, mc*vl, vl,
+     ego->cld2 = X(mkplan_d)(plnr,
+			     X(mkproblem_rdft_0_d)(
+				  X(mktensor_3d)(nc, mc*vl, vl,
 						 mc, vl, nc*vl,
 						 vl, 1, 1),
 				  p->I, p->I));
      if (!ego->cld2)
 	  goto nada;
-     fftwf_ops_add2(&ego->cld2->ops, &ego->super.super.ops);
+     X(ops_add2)(&ego->cld2->ops, &ego->super.super.ops);
 
      if (n > nc) {
-	  ego->cld3 = fftwf_mkplan_d(plnr,
-				  fftwf_mkproblem_rdft_0_d(
-				       fftwf_mktensor_3d(n-nc, m*vl, vl,
+	  ego->cld3 = X(mkplan_d)(plnr,
+				  X(mkproblem_rdft_0_d)(
+				       X(mktensor_3d)(n-nc, m*vl, vl,
 						      m, vl, n*vl,
 						      vl, 1, 1),
 				       buf + (m-mc)*(nc*vl), p->I + nc*vl));
 	  if (!ego->cld3)
 	       goto nada;
-	  fftwf_ops_add2(&ego->cld3->ops, &ego->super.super.ops);
+	  X(ops_add2)(&ego->cld3->ops, &ego->super.super.ops);
      }
 
      /* memcpy/memmove operations */
      ego->super.super.ops.other += 2 * vl * (nc*mc * ((m > mc) + (n > nc))
 					     + (n-nc)*m + (m-mc)*nc);
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
      return 1;
 
  nada:
-     fftwf_ifree(buf);
+     X(ifree)(buf);
      return 0;
 }
 
@@ -494,12 +494,12 @@ static const transpose_adt adt_cut =
 
 /*
  * TOMS Transpose.  Algorithm 513 (Revised version of algorithm 380).
- *
+ * 
  * These routines do in-place transposes of arrays.
- *
- * [ Cate, E.G. and Twigg, D.W., ACM Transactions on Mathematical Software,
+ * 
+ * [ Cate, E.G. and Twigg, D.W., ACM Transactions on Mathematical Software, 
  *   vol. 3, no. 1, 104-110 (1977) ]
- *
+ * 
  * C version by Steven G. Johnson (February 1997).
  */
 
@@ -510,45 +510,45 @@ static const transpose_adt adt_cut =
  * move_size used to store information to speed up the process.  The
  * value move_size=(ny+nx)/2 is recommended.  buf should be an array
  * of length 2*N.
- *
+ * 
  */
 
-static void transpose_toms513(float *a, INT nx, INT ny, INT N,
-                              char *move, INT move_size, float *buf)
+static void transpose_toms513(R *a, INT nx, INT ny, INT N,
+                              char *move, INT move_size, R *buf)
 {
      INT i, im, mn;
-     float *b, *c, *d;
+     R *b, *c, *d;
      INT ncount;
      INT k;
-
+     
      /* check arguments and initialize: */
      A(ny > 0 && nx > 0 && N > 0 && move_size > 0);
-
+     
      b = buf;
-
+     
      /* Cate & Twigg have a special case for nx == ny, but we don't
 	bother, since we already have special code for this case elsewhere. */
 
      c = buf + N;
      ncount = 2;		/* always at least 2 fixed points */
      k = (mn = ny * nx) - 1;
-
+     
      for (i = 0; i < move_size; ++i)
 	  move[i] = 0;
-
+     
      if (ny >= 3 && nx >= 3)
 	  ncount += gcd(ny - 1, nx - 1) - 1;	/* # fixed points */
-
+     
      i = 1;
      im = ny;
-
+     
      while (1) {
 	  INT i1, i2, i1c, i2c;
 	  INT kmi;
-
+	  
 	  /** Rearrange the elements of a loop
 	      and its companion loop: **/
-
+	  
 	  i1 = i;
 	  kmi = k - i;
 	  i1c = kmi;
@@ -564,8 +564,8 @@ static void transpose_toms513(float *a, INT nx, INT ny, INT N,
 		   c[1] = a[2*i1c+1];
 		   break;
 	      default:
-		   memcpy(b, &a[N * i1], N * sizeof(float));
-		   memcpy(c, &a[N * i1c], N * sizeof(float));
+		   memcpy(b, &a[N * i1], N * sizeof(R));
+		   memcpy(c, &a[N * i1c], N * sizeof(R));
 	  }
 	  while (1) {
 	       i2 = ny * i1 - k * (i1 / nx);
@@ -595,10 +595,10 @@ static void transpose_toms513(float *a, INT nx, INT ny, INT N,
 			a[2*i1c+1] = a[2*i2c+1];
 			break;
 		   default:
-			memcpy(&a[N * i1], &a[N * i2],
-			       N * sizeof(float));
-			memcpy(&a[N * i1c], &a[N * i2c],
-			       N * sizeof(float));
+			memcpy(&a[N * i1], &a[N * i2], 
+			       N * sizeof(R));
+			memcpy(&a[N * i1c], &a[N * i2c], 
+			       N * sizeof(R));
 	       }
 	       i1 = i2;
 	       i1c = i2c;
@@ -615,14 +615,14 @@ static void transpose_toms513(float *a, INT nx, INT ny, INT N,
 		   a[2*i1c+1] = c[1];
 		   break;
 	      default:
-		   memcpy(&a[N * i1], b, N * sizeof(float));
-		   memcpy(&a[N * i1c], c, N * sizeof(float));
+		   memcpy(&a[N * i1], b, N * sizeof(R));
+		   memcpy(&a[N * i1c], c, N * sizeof(R));
 	  }
 	  if (ncount >= mn)
 	       break;	/* we've moved all elements */
-
+	  
 	  /** Search for loops to rearrange: **/
-
+	  
 	  while (1) {
 	       INT max = k - i;
 	       ++i;
@@ -646,15 +646,15 @@ static void transpose_toms513(float *a, INT nx, INT ny, INT N,
      }
 }
 
-static void apply_toms513(const plan *ego_, float *I, float *O)
+static void apply_toms513(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT n = ego->n, m = ego->m;
      INT vl = ego->vl;
-     float *buf = (float *)MALLOC(sizeof(float) * ego->nbuf, BUFFERS);
+     R *buf = (R *)MALLOC(sizeof(R) * ego->nbuf, BUFFERS);
      UNUSED(O);
      transpose_toms513(I, n, m, vl, (char *) (buf + 2*vl), (n+m)/2, buf);
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 static int applicable_toms513(const problem_rdft *p, planner *plnr,
@@ -664,8 +664,8 @@ static int applicable_toms513(const problem_rdft *p, planner *plnr,
      INT m = p->vecsz->dims[dim1].n;
      INT vl, vs;
      get_transpose_vec(p, dim2, &vl, &vs);
-     *nbuf = 2*vl
-	  + ((n + m) / 2 * sizeof(char) + sizeof(float) - 1) / sizeof(float);
+     *nbuf = 2*vl 
+	  + ((n + m) / 2 * sizeof(char) + sizeof(R) - 1) / sizeof(R);
      return (!NO_SLOWP(plnr)
 	     && (vl > 8 || !NO_UGLYP(plnr)) /* UGLY for small vl */
 	     && n != m
@@ -695,9 +695,9 @@ static const transpose_adt adt_toms513 =
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cld1, wakefulness);
-     fftwf_plan_awake(ego->cld2, wakefulness);
-     fftwf_plan_awake(ego->cld3, wakefulness);
+     X(plan_awake)(ego->cld1, wakefulness);
+     X(plan_awake)(ego->cld2, wakefulness);
+     X(plan_awake)(ego->cld3, wakefulness);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -714,9 +714,9 @@ static void print(const plan *ego_, printer *p)
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld3);
-     fftwf_plan_destroy_internal(ego->cld2);
-     fftwf_plan_destroy_internal(ego->cld1);
+     X(plan_destroy_internal)(ego->cld3);
+     X(plan_destroy_internal)(ego->cld2);
+     X(plan_destroy_internal)(ego->cld1);
 }
 
 static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
@@ -728,7 +728,7 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      P *pln;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr, &dim0, &dim1, &dim2, &nbuf))
@@ -746,11 +746,11 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->md = pln->m / pln->d;
      pln->slv = ego;
 
-     fftwf_ops_zero(&pln->super.super.ops); /* mkcldrn is responsible for ops */
+     X(ops_zero)(&pln->super.super.ops); /* mkcldrn is responsible for ops */
 
      pln->cld1 = pln->cld2 = pln->cld3 = 0;
      if (!ego->adt->mkcldrn(p, plnr, pln)) {
-	  fftwf_plan_destroy_internal(&(pln->super.super));
+	  X(plan_destroy_internal)(&(pln->super.super));
 	  return 0;
      }
 
@@ -765,7 +765,7 @@ static solver *mksolver(const transpose_adt *adt)
      return &(slv->super);
 }
 
-void fftwf_rdft_vrank3_transpose_register(planner *p)
+void X(rdft_vrank3_transpose_register)(planner *p)
 {
      unsigned i;
      static const transpose_adt *const adts[] = {

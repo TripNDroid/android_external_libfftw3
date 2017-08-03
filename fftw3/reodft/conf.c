@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -29,17 +29,17 @@ static const solvtab s =
      SOLVTAB(X(rodft00e_r2hc_register)),
      SOLVTAB(X(reodft11e_r2hc_register)),
 #endif
-     SOLVTAB(fftwf_rodft00e_r2hc_pad_register),
-     SOLVTAB(fftwf_reodft00e_splitradix_register),
-     SOLVTAB(fftwf_reodft010e_r2hc_register),
-     SOLVTAB(fftwf_reodft11e_radix2_r2hc_register),
-     SOLVTAB(fftwf_reodft11e_r2hc_odd_register),
+     SOLVTAB(X(redft00e_r2hc_pad_register)),
+     SOLVTAB(X(rodft00e_r2hc_pad_register)),
+     SOLVTAB(X(reodft00e_splitradix_register)),
+     SOLVTAB(X(reodft010e_r2hc_register)),
+     SOLVTAB(X(reodft11e_radix2_r2hc_register)),
+     SOLVTAB(X(reodft11e_r2hc_odd_register)),
 
      SOLVTAB_END
 };
 
-void fftwf_reodft_conf_standard(planner *p)
+void X(reodft_conf_standard)(planner *p)
 {
-     fftwf_solvtab_exec(s, p);
+     X(solvtab_exec)(s, p);
 }
-

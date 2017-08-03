@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -52,7 +52,7 @@ typedef struct {
 
 /*-----------------------------------------------------------------------*/
 /* first rearrange, then transform */
-static void apply_before(const plan *ego_, float *I, float *O)
+static void apply_before(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
 
@@ -68,9 +68,9 @@ static void apply_before(const plan *ego_, float *I, float *O)
 
 static problem *mkcld_before(const problem_rdft *p)
 {
-     return (fftwf_mkproblem_rdft_d(fftwf_tensor_copy_inplace(p->sz, INPLACE_OS),
-				fftwf_tensor_copy_inplace(p->vecsz, INPLACE_OS),
-				p->O, p->O, p->kind));
+     return X(mkproblem_rdft_d)(X(tensor_copy_inplace)(p->sz, INPLACE_OS),
+				X(tensor_copy_inplace)(p->vecsz, INPLACE_OS),
+				p->O, p->O, p->kind);
 }
 
 static const ndrct_adt adt_before =
@@ -81,7 +81,7 @@ static const ndrct_adt adt_before =
 /*-----------------------------------------------------------------------*/
 /* first transform, then rearrange */
 
-static void apply_after(const plan *ego_, float *I, float*O)
+static void apply_after(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
 
@@ -97,9 +97,9 @@ static void apply_after(const plan *ego_, float *I, float*O)
 
 static problem *mkcld_after(const problem_rdft *p)
 {
-     return (fftwf_mkproblem_rdft_d (fftwf_tensor_copy_inplace(p->sz, INPLACE_IS),
-				fftwf_tensor_copy_inplace(p->vecsz, INPLACE_IS),
-				p->I, p->I, p->kind));
+     return X(mkproblem_rdft_d)(X(tensor_copy_inplace)(p->sz, INPLACE_IS),
+				X(tensor_copy_inplace)(p->vecsz, INPLACE_IS),
+				p->I, p->I, p->kind);
 }
 
 static const ndrct_adt adt_after =
@@ -111,15 +111,15 @@ static const ndrct_adt adt_after =
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld);
-     fftwf_plan_destroy_internal(ego->cldcpy);
+     X(plan_destroy_internal)(ego->cld);
+     X(plan_destroy_internal)(ego->cldcpy);
 }
 
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cldcpy, wakefulness);
-     fftwf_plan_awake(ego->cld, wakefulness);
+     X(plan_awake)(ego->cldcpy, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -128,6 +128,7 @@ static void print(const plan *ego_, printer *p)
      const S *s = ego->slv;
      p->print(p, "(%s%(%p%)%(%p%))", s->adt->nam, ego->cld, ego->cldcpy);
 }
+
 static int applicable0(const solver *ego_, const problem *p_,
 		       const planner *plnr)
 {
@@ -144,21 +145,21 @@ static int applicable0(const solver *ego_, const problem *p_,
 		 /* problem must be in-place & require some
 		    rearrangement of the data */
 		 || (p->I == p->O
-		     && !(fftwf_tensor_inplace_strides2(p->sz, p->vecsz)))
+		     && !(X(tensor_inplace_strides2)(p->sz, p->vecsz)))
 
 		 /* or problem must be out of place, transforming
 		    from stride 1/2 to bigger stride, for apply_after */
 		 || (p->I != p->O && ego->adt->apply == apply_after
 		     && !NO_DESTROY_INPUTP(plnr)
-		     && fftwf_tensor_min_istride(p->sz) <= 2
-		     && fftwf_tensor_min_ostride(p->sz) > 2)
-
+		     && X(tensor_min_istride)(p->sz) <= 2
+		     && X(tensor_min_ostride)(p->sz) > 2)
+			  
 		 /* or problem must be out of place, transforming
 		    to stride 1/2 from bigger stride, for apply_before */
 		 || (p->I != p->O && ego->adt->apply == apply_before
-		     && fftwf_tensor_min_ostride(p->sz) <= 2
-		     && fftwf_tensor_min_istride(p->sz) > 2)
-
+		     && X(tensor_min_ostride)(p->sz) <= 2
+		     && X(tensor_min_istride)(p->sz) > 2)
+			  
 		  )
 	  );
 }
@@ -167,7 +168,7 @@ static int applicable(const solver *ego_, const problem *p_,
 		      const planner *plnr)
 {
      if (!applicable0(ego_, p_, plnr)) return 0;
-
+	  
      if (NO_INDIRECT_OP_P(plnr)) {
 	  const problem_rdft *p = (const problem_rdft *)p_;
 	  if (p->I != p->O) return 0;
@@ -184,37 +185,34 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      plan *cld = 0, *cldcpy = 0;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr))
           return (plan *) 0;
 
-     cldcpy = fftwf_mkplan_d(plnr,
-			  fftwf_mkproblem_rdft_0_d(
-			       fftwf_tensor_append(p->vecsz, p->sz),
+     cldcpy = X(mkplan_d)(plnr,
+			  X(mkproblem_rdft_0_d)(
+			       X(tensor_append)(p->vecsz, p->sz),
 			       p->I, p->O));
      if (!cldcpy) goto nada;
 
-     cld = fftwf_mkplan_f_d(plnr, ego->adt->mkcld(p), NO_BUFFERING, 0, 0);
+     cld = X(mkplan_f_d)(plnr, ego->adt->mkcld(p), NO_BUFFERING, 0, 0);
      if (!cld) goto nada;
 
      pln = MKPLAN_RDFT(P, &padt, ego->adt->apply);
      pln->cld = cld;
      pln->cldcpy = cldcpy;
      pln->slv = ego;
-     fftwf_ops_add(&cld->ops, &cldcpy->ops, &pln->super.super.ops);
+     X(ops_add)(&cld->ops, &cldcpy->ops, &pln->super.super.ops);
 
      return &(pln->super.super);
 
  nada:
-     fftwf_plan_destroy_internal(cld);
-     fftwf_plan_destroy_internal(cldcpy);
+     X(plan_destroy_internal)(cld);
+     X(plan_destroy_internal)(cldcpy);
      return (plan *)0;
 }
-
-
-
 
 static solver *mksolver(const ndrct_adt *adt)
 {
@@ -224,7 +222,7 @@ static solver *mksolver(const ndrct_adt *adt)
      return &(slv->super);
 }
 
-void fftwf_rdft_indirect_register(planner *p)
+void X(rdft_indirect_register)(planner *p)
 {
      unsigned i;
      static const ndrct_adt *const adts[] = {
@@ -234,4 +232,3 @@ void fftwf_rdft_indirect_register(planner *p)
      for (i = 0; i < sizeof(adts) / sizeof(adts[0]); ++i)
           REGISTER_SOLVER(p, mksolver(adts[i]));
 }
-

@@ -13,4 +13,5 @@ one or more dimensions, of arbitrary input size, and of both real and complex da
 
 ## License
 
-Please refer to the LICENSE file for detailed information.
+FFmpeg codebase is mainly LGPL-licensed with optional components licensed under
+GPL. Please refer to the LICENSE file for detailed information.

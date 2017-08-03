@@ -1,5 +1,34 @@
+/*
+ * Copyright (c) 2000 Matteo Frigo
+ * Copyright (c) 2000 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
 #include "ifftw.h"
 #include <string.h>
+
+/* GNU Coding Standards, Sec. 5.2: "Please write the comments in a GNU
+   program in English, because English is the one language that nearly
+   all programmers in all countries can read."
+
+                    ingemisco tanquam reus
+		    culpa rubet vultus meus
+		    supplicanti parce [rms]
+*/
 
 #define VALIDP(solution) ((solution)->flags.hash_info & H_VALID)
 #define LIVEP(solution) ((solution)->flags.hash_info & H_LIVE)
@@ -27,7 +56,7 @@ static int subsumes(const flags_t *a, unsigned slvndx_a, const flags_t *b)
 	  A(a->timelimit_impatience == 0);
 	  return (LEQ(a->u, b->u) && LEQ(b->l, a->l));
      } else {
-	  return (LEQ(a->l, b->l)
+	  return (LEQ(a->l, b->l) 
 		  && a->timelimit_impatience <= b->timelimit_impatience);
      }
 }
@@ -59,7 +88,7 @@ static void sgrow(planner *ego)
      ego->slvdescsiz = nsiz;
      for (i = 0; i < osiz; ++i)
 	  ntab[i] = otab[i];
-     fftwf_ifree0(otab);
+     X(ifree0)(otab);
 }
 
 static void register_solver(planner *ego, solver *s)
@@ -68,7 +97,7 @@ static void register_solver(planner *ego, solver *s)
      int kind;
 
      if (s) { /* add s to solver list */
-	  fftwf_solver_use(s);
+	  X(solver_use)(s);
 
 	  A(ego->nslvdesc < INFEASIBLE_SLVNDX);
 	  if (ego->nslvdesc >= ego->slvdescsiz)
@@ -79,9 +108,9 @@ static void register_solver(planner *ego, solver *s)
 	  n->slv = s;
 	  n->reg_nam = ego->cur_reg_nam;
 	  n->reg_id = ego->cur_reg_id++;
-
+	  
 	  A(strlen(n->reg_nam) < MAXNAM);
-	  n->nam_hash = fftwf_hash(n->reg_nam);
+	  n->nam_hash = X(hash)(n->reg_nam);
 
 	  kind = s->adt->problem_kind;
 	  n->next_for_same_problem_kind = ego->slvdescs_for_problem_kind[kind];
@@ -93,7 +122,7 @@ static void register_solver(planner *ego, solver *s)
 
 static unsigned slookup(planner *ego, char *nam, int id)
 {
-     unsigned h = fftwf_hash(nam); /* used to avoid strcmp in the common case */
+     unsigned h = X(hash)(nam); /* used to avoid strcmp in the common case */
      FORALL_SOLVERS(ego, s, sp, {
 	  UNUSED(s);
 	  if (sp->reg_id == id && sp->nam_hash == h
@@ -101,6 +130,21 @@ static unsigned slookup(planner *ego, char *nam, int id)
 	       return sp - ego->slvdescs;
      });
      return INFEASIBLE_SLVNDX;
+}
+
+/* Compute a MD5 hash of the configuration of the planner.
+   We store it into the wisdom file to make absolutely sure that
+   we are reading wisdom that is applicable */
+static void signature_of_configuration(md5 *m, planner *ego)
+{
+     X(md5begin)(m);
+     X(md5unsigned)(m, sizeof(R)); /* so we don't mix different precisions */
+     FORALL_SOLVERS(ego, s, sp, {
+	  UNUSED(s);
+	  X(md5int)(m, sp->reg_id);
+	  X(md5puts)(m, sp->reg_nam);
+     });
+     X(md5end)(m);
 }
 
 /*
@@ -125,11 +169,11 @@ static unsigned h2(const hashtab *ht, const md5sig s)
 
 static void md5hash(md5 *m, const problem *p, const planner *plnr)
 {
-     fftwf_md5begin(m);
-     fftwf_md5unsigned(m, sizeof(float)); /* so we don't mix different precisions */
-     fftwf_md5int(m, plnr->nthr);
+     X(md5begin)(m);
+     X(md5unsigned)(m, sizeof(R)); /* so we don't mix different precisions */
+     X(md5int)(m, plnr->nthr);
      p->adt->hash(p, m);
-    fftwf_md5end(m);
+     X(md5end)(m);
 }
 
 static int md5eq(const md5sig a, const md5sig b)
@@ -156,7 +200,7 @@ struct solution_s {
      flags_t flags;
 };
 
-static solution *htab_lookup(hashtab *ht, const md5sig s,
+static solution *htab_lookup(hashtab *ht, const md5sig s, 
 			     const flags_t *flagsp)
 {
      unsigned g, h = h1(ht, s), d = h2(ht, s);
@@ -177,22 +221,22 @@ static solution *htab_lookup(hashtab *ht, const md5sig s,
 	  if (VALIDP(l)) {
 	       if (LIVEP(l)
 		   && md5eq(s, l->s)
-		   && subsumes(&l->flags, SLVNDX(l), flagsp) ) {
+		   && subsumes(&l->flags, SLVNDX(l), flagsp) ) { 
 		    if (!best || LEQ(l->flags.u, best->flags.u))
 			 best = l;
 	       }
-	  } else
+	  } else 
 	       break;
 
 	  g = addmod(g, d, ht->hashsiz);
      } while (g != h);
 
-     if (best)
+     if (best) 
 	  ++ht->succ_lookup;
      return best;
 }
 
-static solution *hlookup(planner *ego, const md5sig s,
+static solution *hlookup(planner *ego, const md5sig s, 
 			 const flags_t *flagsp)
 {
      solution *sol = htab_lookup(&ego->htab_blessed, s, flagsp);
@@ -214,7 +258,7 @@ static void fill_slot(hashtab *ht, const md5sig s, const flags_t *flagsp,
 
      /* keep this check enabled in case we add so many solvers
 	that the bitfield overflows */
-     CK(SLVNDX(slot) == slvndx);
+     CK(SLVNDX(slot) == slvndx);     
      sigcpy(s, slot->s);
 }
 
@@ -226,11 +270,11 @@ static void kill_slot(hashtab *ht, solution *slot)
      slot->flags.hash_info = H_VALID;
 }
 
-static void hinsert0(hashtab *ht, const md5sig s, const flags_t *flagsp,
+static void hinsert0(hashtab *ht, const md5sig s, const flags_t *flagsp, 
 		     unsigned slvndx)
 {
      solution *l;
-     unsigned g, h = h1(ht, s), d = h2(ht, s);
+     unsigned g, h = h1(ht, s), d = h2(ht, s); 
 
      ++ht->insert_unknown;
 
@@ -250,12 +294,12 @@ static void rehash(hashtab *ht, unsigned nsiz)
      unsigned osiz = ht->hashsiz, h;
      solution *osol = ht->solutions, *nsol;
 
-     nsiz = (unsigned)fftwf_next_prime((INT)nsiz);
+     nsiz = (unsigned)X(next_prime)((INT)nsiz);
      nsol = (solution *)MALLOC(nsiz * sizeof(solution), HASHT);
      ++ht->nrehash;
 
      /* init new table */
-     for (h = 0; h < nsiz; ++h)
+     for (h = 0; h < nsiz; ++h) 
 	  nsol[h].flags.hash_info = 0;
 
      /* install new table */
@@ -270,7 +314,7 @@ static void rehash(hashtab *ht, unsigned nsiz)
 	       hinsert0(ht, l->s, &l->flags, SLVNDX(l));
      }
 
-     fftwf_ifree0(osol);
+     X(ifree0)(osol);
 }
 
 static unsigned minsz(unsigned nelem)
@@ -326,7 +370,7 @@ static void htab_insert(hashtab *ht, const md5sig s, const flags_t *flagsp,
 			 A(!subsumes(&l->flags, SLVNDX(l), flagsp));
 		    }
 	       }
-	  } else
+	  } else 
 	       break;
 
 	  g = addmod(g, d, ht->hashsiz);
@@ -342,7 +386,7 @@ static void htab_insert(hashtab *ht, const md5sig s, const flags_t *flagsp,
      }
 }
 
-static void hinsert(planner *ego, const md5sig s, const flags_t *flagsp,
+static void hinsert(planner *ego, const md5sig s, const flags_t *flagsp, 
 		    unsigned slvndx)
 {
      htab_insert(BLISS(*flagsp) ? &ego->htab_blessed : &ego->htab_unblessed,
@@ -350,25 +394,47 @@ static void hinsert(planner *ego, const md5sig s, const flags_t *flagsp,
 }
 
 
-static void invoke_hook(planner *ego, plan *pln, const problem *p,
+static void invoke_hook(planner *ego, plan *pln, const problem *p, 
 			int optimalp)
 {
      if (ego->hook)
 	  ego->hook(ego, pln, p, optimalp);
 }
 
-double fftwf_iestimate_cost(const planner *ego, const plan *pln, const problem *p)
+#ifdef FFTW_RANDOM_ESTIMATOR
+/* a "random" estimate, used for debugging to generate "random"
+   plans, albeit from a deterministic seed. */
+
+unsigned X(random_estimate_seed) = 0;
+
+static double random_estimate(const planner *ego, const plan *pln, 
+			      const problem *p)
+{
+     md5 m;
+     X(md5begin)(&m);
+     X(md5unsigned)(&m, X(random_estimate_seed));
+     X(md5int)(&m, ego->nthr);
+     p->adt->hash(p, &m);
+     X(md5putb)(&m, &pln->ops, sizeof(pln->ops));
+     X(md5putb)(&m, &pln->adt, sizeof(pln->adt));
+     X(md5end)(&m);
+     return ego->cost_hook ? ego->cost_hook(p, m.s[0], COST_MAX) : m.s[0];
+}
+
+#endif
+
+double X(iestimate_cost)(const planner *ego, const plan *pln, const problem *p)
 {
      double cost =
 	  + pln->ops.add
 	  + pln->ops.mul
-
+	  
 #if HAVE_FMA
 	  + pln->ops.fma
 #else
 	  + 2 * pln->ops.fma
 #endif
-
+	  
 	  + pln->ops.other;
      if (ego->cost_hook)
 	  cost = ego->cost_hook(p, cost, COST_MAX);
@@ -383,11 +449,16 @@ static void evaluate_plan(planner *ego, plan *pln, const problem *p)
 	  if (ESTIMATEP(ego)) {
 	  estimate:
 	       /* heuristic */
-	       pln->pcost = fftwf_iestimate_cost(ego, pln, p);
+#ifdef FFTW_RANDOM_ESTIMATOR
+	       pln->pcost = random_estimate(ego, pln, p);
+	       ego->epcost += X(iestimate_cost)(ego, pln, p);
+#else
+	       pln->pcost = X(iestimate_cost)(ego, pln, p);
 	       ego->epcost += pln->pcost;
+#endif
 	  } else {
-	       double t = fftwf_measure_execution_time(ego, pln, p);
-
+	       double t = X(measure_execution_time)(ego, pln, p);
+	       
 	       if (t < 0) {  /* unavailable cycle counter */
 		    /* Real programmers can write FORTRAN in any language */
 		    goto estimate;
@@ -398,12 +469,12 @@ static void evaluate_plan(planner *ego, plan *pln, const problem *p)
 	       ego->need_timeout_check = 1;
 	  }
      }
-
+     
      invoke_hook(ego, pln, p, 0);
 }
 
 /* maintain dynamic scoping of flags, nthr: */
-static plan *invoke_solver(planner *ego, const problem *p, solver *s,
+static plan *invoke_solver(planner *ego, const problem *p, solver *s, 
 			   const flags_t *nflags)
 {
      flags_t flags = ego->flags;
@@ -432,7 +503,7 @@ static int timeout_p(planner *ego, const problem *p)
 	  }
 
 	  if (ego->timelimit >= 0 &&
-	      fftwf_elapsed_since(ego, p, ego->start_time) >= ego->timelimit) {
+	      X(elapsed_since)(ego, p, ego->start_time) >= ego->timelimit) {
 	       ego->timed_out = 1;
 	       ego->need_timeout_check = 1;
 	       return 1;
@@ -444,7 +515,7 @@ static int timeout_p(planner *ego, const problem *p)
      return 0;
 }
 
-static plan *search0(planner *ego, const problem *p, unsigned *slvndx,
+static plan *search0(planner *ego, const problem *p, unsigned *slvndx, 
 		     const flags_t *flagsp)
 {
      plan *best = 0;
@@ -460,10 +531,10 @@ static plan *search0(planner *ego, const problem *p, unsigned *slvndx,
 
 	  pln = invoke_solver(ego, p, s, flagsp);
 
-	  if (ego->need_timeout_check)
+	  if (ego->need_timeout_check) 
 	       if (timeout_p(ego, p)) {
-		    fftwf_plan_destroy_internal(pln);
-		    fftwf_plan_destroy_internal(best);
+		    X(plan_destroy_internal)(pln);
+		    X(plan_destroy_internal)(best);
 		    return 0;
 	       }
 
@@ -479,18 +550,18 @@ static plan *search0(planner *ego, const problem *p, unsigned *slvndx,
 		    }
 		    evaluate_plan(ego, pln, p);
 		    if (pln->pcost < best->pcost) {
-			 fftwf_plan_destroy_internal(best);
+			 X(plan_destroy_internal)(best);
 			 best = pln;
 			 *slvndx = sp - ego->slvdescs;
 		    } else {
-			 fftwf_plan_destroy_internal(pln);
+			 X(plan_destroy_internal)(pln);
 		    }
 	       } else {
 		    best = pln;
 		    *slvndx = sp - ego->slvdescs;
 	       }
 
-	       if (ALLOW_PRUNINGP(ego) && could_prune_now_p)
+	       if (ALLOW_PRUNINGP(ego) && could_prune_now_p) 
 		    break;
 	  }
      });
@@ -498,7 +569,7 @@ static plan *search0(planner *ego, const problem *p, unsigned *slvndx,
      return best;
 }
 
-static plan *search(planner *ego, const problem *p, unsigned *slvndx,
+static plan *search(planner *ego, const problem *p, unsigned *slvndx, 
 		    flags_t *flagsp)
 {
      plan *pln = 0;
@@ -517,7 +588,7 @@ static plan *search(planner *ego, const problem *p, unsigned *slvndx,
      unsigned x = flagsp->u;
 
      /* guaranteed to be different from X */
-     unsigned last_x = ~x;
+     unsigned last_x = ~x; 
 
      for (i = 0; i < sizeof(relax_tab) / sizeof(relax_tab[0]); ++i) {
 	  if (LEQ(l_orig, x & ~relax_tab[i]))
@@ -543,9 +614,11 @@ static plan *search(planner *ego, const problem *p, unsigned *slvndx,
      return pln;
 }
 
-#define CHECK_FOR_BOGOSITY			\
-     if (ego->wisdom_state == WISDOM_IS_BOGUS)	\
-	  goto wisdom_is_bogus
+#define CHECK_FOR_BOGOSITY						\
+     if ((ego->bogosity_hook ?						\
+	  (ego->wisdom_state = ego->bogosity_hook(ego->wisdom_state, p)) \
+	  : ego->wisdom_state) == WISDOM_IS_BOGUS)			\
+	  goto wisdom_is_bogus;
 
 static plan *mkplan(planner *ego, const problem *p)
 {
@@ -579,45 +652,54 @@ static plan *mkplan(planner *ego, const problem *p)
 
      flags_of_solution = ego->flags;
 
-     if ((ego->wisdom_state != WISDOM_IGNORE_ALL) &&
-	 (sol = hlookup(ego, m.s, &flags_of_solution))) {
-	  /* wisdom is acceptable */
-	  wisdom_state_t owisdom_state = ego->wisdom_state;
-	  slvndx = SLVNDX(sol);
-
-	  if (slvndx == INFEASIBLE_SLVNDX) {
-	       if (ego->wisdom_state == WISDOM_IGNORE_INFEASIBLE)
-		    goto do_search;
-	       else
-		    return 0;   /* known to be infeasible */
+     if (ego->wisdom_state != WISDOM_IGNORE_ALL) {
+	  if ((sol = hlookup(ego, m.s, &flags_of_solution))) { 
+	       /* wisdom is acceptable */
+	       wisdom_state_t owisdom_state = ego->wisdom_state;
+	       
+	       /* this hook is mainly for MPI, to make sure that
+		  wisdom is in sync across all processes for MPI problems */
+	       if (ego->wisdom_ok_hook && !ego->wisdom_ok_hook(p, sol->flags))
+		    goto do_search; /* ignore not-ok wisdom */
+	       
+	       slvndx = SLVNDX(sol);
+	       
+	       if (slvndx == INFEASIBLE_SLVNDX) {
+		    if (ego->wisdom_state == WISDOM_IGNORE_INFEASIBLE)
+			 goto do_search;
+		    else
+			 return 0;   /* known to be infeasible */
+	       }
+	       
+	       flags_of_solution = sol->flags;
+	       
+	       /* inherit blessing either from wisdom
+		  or from the planner */
+	       flags_of_solution.hash_info |= BLISS(ego->flags);
+	       
+	       ego->wisdom_state = WISDOM_ONLY;
+	       
+	       s = ego->slvdescs[slvndx].slv;
+	       if (p->adt->problem_kind != s->adt->problem_kind)
+		    goto wisdom_is_bogus;
+	       
+	       pln = invoke_solver(ego, p, s, &flags_of_solution);
+	       
+	       CHECK_FOR_BOGOSITY; 	  /* catch error in child solvers */
+	       
+	       sol = 0; /* Paranoia: SOL may be dangling after
+			   invoke_solver(); make sure we don't accidentally
+			   reuse it. */
+	       
+	       if (!pln)
+		    goto wisdom_is_bogus;
+	       
+	       ego->wisdom_state = owisdom_state;
+	       
+	       goto skip_search;
 	  }
-
-	  flags_of_solution = sol->flags;
-
-	  /* inherit blessing either from wisdom
-	     or from the planner */
-	  flags_of_solution.hash_info |= BLISS(ego->flags);
-
-	  ego->wisdom_state = WISDOM_ONLY;
-
-	  s = ego->slvdescs[slvndx].slv;
-	  if (p->adt->problem_kind != s->adt->problem_kind)
-	       goto wisdom_is_bogus;
-
-	  pln = invoke_solver(ego, p, s, &flags_of_solution);
-
-	  CHECK_FOR_BOGOSITY; 	  /* catch error in child solvers */
-
-	  sol = 0; /* Paranoia: SOL may be dangling after
-		      invoke_solver(); make sure we don't accidentally
-		      reuse it. */
-
-	  if (!pln)
-	       goto wisdom_is_bogus;
-
-	  ego->wisdom_state = owisdom_state;
-
-	  goto skip_search;
+	  else if (ego->nowisdom_hook) /* for MPI, make sure lack of wisdom */
+	       ego->nowisdom_hook(p);  /*   is in sync across all processes */
      }
 
  do_search:
@@ -659,14 +741,14 @@ static plan *mkplan(planner *ego, const problem *p)
      return pln;
 
  wisdom_is_bogus:
-     fftwf_plan_destroy_internal(pln);
+     X(plan_destroy_internal)(pln);
      ego->wisdom_state = WISDOM_IS_BOGUS;
      return 0;
 }
 
 static void htab_destroy(hashtab *ht)
 {
-     fftwf_ifree(ht->solutions);
+     X(ifree)(ht->solutions);
      ht->solutions = 0;
      ht->nelem = 0U;
 }
@@ -701,7 +783,7 @@ static void forget(planner *ego, amnesia a)
 }
 
 /* FIXME: what sort of version information should we write? */
-#define WISDOM_PREAMBLE PACKAGE "-" VERSION " " STRINGIZE(fftwf_wisdom)
+#define WISDOM_PREAMBLE PACKAGE "-" VERSION " " STRINGIZE(X(wisdom))
 static const char stimeout[] = "TIMEOUT";
 
 /* tantus labor non sit cassus */
@@ -709,8 +791,14 @@ static void exprt(planner *ego, printer *p)
 {
      unsigned h;
      hashtab *ht = &ego->htab_blessed;
+     md5 m;
 
-     p->print(p, "(" WISDOM_PREAMBLE "\n");
+     signature_of_configuration(&m, ego);
+
+     p->print(p, 
+	      "(" WISDOM_PREAMBLE " #x%M #x%M #x%M #x%M\n",
+	      m.s[0], m.s[1], m.s[2], m.s[3]);
+
      for (h = 0; h < ht->hashsiz; ++h) {
 	  solution *l = ht->solutions + h;
 	  if (LIVEP(l)) {
@@ -729,8 +817,8 @@ static void exprt(planner *ego, printer *p)
 	       /* qui salvandos salvas gratis
 		  salva me fons pietatis */
 	       p->print(p, "  (%s %d #x%x #x%x #x%x #x%M #x%M #x%M #x%M)\n",
-			reg_nam, reg_id,
-			l->flags.l, l->flags.u, l->flags.timelimit_impatience,
+			reg_nam, reg_id, 
+			l->flags.l, l->flags.u, l->flags.timelimit_impatience, 
 			l->s[0], l->s[1], l->s[2], l->s[3]);
 	  }
      }
@@ -749,10 +837,20 @@ static int imprt(planner *ego, scanner *sc)
      unsigned slvndx;
      hashtab *ht = &ego->htab_blessed;
      hashtab old;
+     md5 m;
 
-     if (!sc->scan(sc, "(" WISDOM_PREAMBLE))
+     if (!sc->scan(sc, 
+		   "(" WISDOM_PREAMBLE " #x%M #x%M #x%M #x%M\n",
+		   sig + 0, sig + 1, sig + 2, sig + 3))
 	  return 0; /* don't need to restore hashtable */
 
+     signature_of_configuration(&m, ego);
+     if (m.s[0] != sig[0] || m.s[1] != sig[1] ||
+	 m.s[2] != sig[2] || m.s[3] != sig[3]) {
+	  /* invalid configuration */
+	  return 0;
+     }
+     
      /* make a backup copy of the hash table (cache the hash) */
      {
 	  unsigned h, hsiz = ht->hashsiz;
@@ -797,12 +895,12 @@ static int imprt(planner *ego, scanner *sc)
 	       hinsert(ego, sig, &flags, slvndx);
      }
 
-     fftwf_ifree0(old.solutions);
+     X(ifree0)(old.solutions);
      return 1;
 
  bad:
      /* ``The wisdom of FFTW must be above suspicion.'' */
-     fftwf_ifree0(ht->solutions);
+     X(ifree0)(ht->solutions);
      *ht = old;
      return 0;
 }
@@ -810,7 +908,7 @@ static int imprt(planner *ego, scanner *sc)
 /*
  * create a planner
  */
-planner *fftwf_mkplanner (void)
+planner *X(mkplanner)(void)
 {
      int i;
 
@@ -825,6 +923,9 @@ planner *fftwf_mkplanner (void)
      p->pcost = p->epcost = 0.0;
      p->hook = 0;
      p->cost_hook = 0;
+     p->wisdom_ok_hook = 0;
+     p->nowisdom_hook = 0;
+     p->bogosity_hook = 0;
      p->cur_reg_nam = 0;
      p->wisdom_state = WISDOM_NORMAL;
 
@@ -848,7 +949,7 @@ planner *fftwf_mkplanner (void)
      return p;
 }
 
-void fftwf_planner_destroy(planner *ego)
+void X(planner_destroy)(planner *ego)
 {
      /* destroy hash table */
      htab_destroy(&ego->htab_blessed);
@@ -857,22 +958,22 @@ void fftwf_planner_destroy(planner *ego)
      /* destroy solvdesc table */
      FORALL_SOLVERS(ego, s, sp, {
 	  UNUSED(sp);
-	  fftwf_solver_destroy(s);
+	  X(solver_destroy)(s);
      });
 
-     fftwf_ifree0(ego->slvdescs);
-     fftwf_ifree(ego); /* dona eis requiem */
+     X(ifree0)(ego->slvdescs);
+     X(ifree)(ego); /* dona eis requiem */
 }
 
-plan *fftwf_mkplan_d(planner *ego, problem *p)
+plan *X(mkplan_d)(planner *ego, problem *p)
 {
      plan *pln = ego->adt->mkplan(ego, p);
-     fftwf_problem_destroy(p);
+     X(problem_destroy)(p);
      return pln;
 }
 
 /* like X(mkplan_d), but sets/resets flags as well */
-plan *fftwf_mkplan_f_d(planner *ego, problem *p,
+plan *X(mkplan_f_d)(planner *ego, problem *p, 
 		    unsigned l_set, unsigned u_set, unsigned u_reset)
 {
      flags_t oflags = ego->flags;
@@ -882,7 +983,7 @@ plan *fftwf_mkplan_f_d(planner *ego, problem *p,
      PLNR_L(ego) &= ~u_reset;
      PLNR_L(ego) |= l_set;
      PLNR_U(ego) |= u_set | l_set;
-     pln = fftwf_mkplan_d(ego, p);
+     pln = X(mkplan_d)(ego, p);
      ego->flags = oflags;
      return pln;
 }
@@ -899,15 +1000,15 @@ static void check(hashtab *ht)
      A(ht->nelem < ht->hashsiz);
 
      for (i = 0; i < ht->hashsiz; ++i) {
-	  solution *l = ht->solutions + i;
-	  if (LIVEP(l))
-	       ++live;
+	  solution *l = ht->solutions + i; 
+	  if (LIVEP(l)) 
+	       ++live; 
      }
 
      A(ht->nelem == live);
 
      for (i = 0; i < ht->hashsiz; ++i) {
-	  solution *l1 = ht->solutions + i;
+	  solution *l1 = ht->solutions + i; 
 	  int foundit = 0;
 	  if (LIVEP(l1)) {
 	       unsigned g, h = h1(ht, l1->s), d = h2(ht, l1->s);
@@ -922,7 +1023,7 @@ static void check(hashtab *ht)
 			      A(!subsumes(&l->flags, SLVNDX(l), &l1->flags));
 			      A(!subsumes(&l1->flags, SLVNDX(l1), &l->flags));
 			 }
-		    } else
+		    } else 
 			 break;
 		    g = addmod(g, d, ht->hashsiz);
 	       } while (g != h);

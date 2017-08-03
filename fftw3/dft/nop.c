@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -23,7 +23,7 @@
 
 #include "dft.h"
 
-static void apply(const plan *ego_, float *ri, float *ii, float *ro, float *io)
+static void apply(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      UNUSED(ego_);
      UNUSED(ri);
@@ -47,7 +47,7 @@ static int applicable(const solver *ego_, const problem *p_)
 	      && p->sz->rnk == 0
 	      && FINITE_RNK(p->vecsz->rnk)
 	      && p->ro == p->ri
-	      && fftwf_tensor_inplace_strides(p->vecsz)
+	      && X(tensor_inplace_strides)(p->vecsz)
 	       );
 }
 
@@ -60,7 +60,7 @@ static void print(const plan *ego, printer *p)
 static plan *mkplan(const solver *ego, const problem *p, planner *plnr)
 {
      static const plan_adt padt = {
-	  fftwf_dft_solve, fftwf_null_awake, print, fftwf_plan_null_destroy
+	  X(dft_solve), X(null_awake), print, X(plan_null_destroy)
      };
      plan_dft *pln;
 
@@ -69,7 +69,7 @@ static plan *mkplan(const solver *ego, const problem *p, planner *plnr)
      if (!applicable(ego, p))
           return (plan *) 0;
      pln = MKPLAN_DFT(plan_dft, &padt, apply);
-     fftwf_ops_zero(&pln->super.ops);
+     X(ops_zero)(&pln->super.ops);
 
      return &(pln->super);
 }
@@ -80,8 +80,7 @@ static solver *mksolver(void)
      return MKSOLVER(solver, &sadt);
 }
 
-void fftwf_dft_nop_register(planner *p)
+void X(dft_nop_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }
-

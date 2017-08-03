@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -26,7 +26,7 @@
 #ifndef __RDFT_CODELET_H__
 #define __RDFT_CODELET_H__
 
-#include "../kernel/ifftw.h"
+#include "ifftw.h"
 
 /**************************************************************
  * types of codelets
@@ -39,7 +39,7 @@
 typedef enum {
      R2HC00, R2HC01, R2HC10, R2HC11,
      HC2R00, HC2R01, HC2R10, HC2R11,
-     DHT,
+     DHT, 
      REDFT00, REDFT01, REDFT10, REDFT11, /* real-even == DCT's */
      RODFT00, RODFT01, RODFT10, RODFT11  /*  real-odd == DST's */
 } rdft_kind;
@@ -78,10 +78,10 @@ struct kr2c_desc_s {
      const kr2c_genus *genus;
 };
 
-typedef void (*kr2c) (float *R0, float *R1, float *Cr, float *Ci,
+typedef void (*kr2c) (R *R0, R *R1, R *Cr, R *Ci,
 		      stride rs, stride csr, stride csi,
 		      INT vl, INT ivs, INT ovs);
-void fftwf_kr2c_register(planner *p, kr2c codelet, const kr2c_desc *desc);
+void X(kr2c_register)(planner *p, kr2c codelet, const kr2c_desc *desc);
 
 /* half-complex to half-complex DIT/DIF codelets: */
 typedef struct hc2hc_desc_s hc2hc_desc;
@@ -99,9 +99,9 @@ struct hc2hc_desc_s {
      opcnt ops;
 };
 
-typedef void (*khc2hc) (float *rioarray, float *iioarray, const float *W,
+typedef void (*khc2hc) (R *rioarray, R *iioarray, const R *W,
 			stride rs, INT mb, INT me, INT ms);
-void fftwf_khc2hc_register(planner *p, khc2hc codelet, const hc2hc_desc *desc);
+void X(khc2hc_register)(planner *p, khc2hc codelet, const hc2hc_desc *desc);
 
 /* half-complex to rdft2-complex DIT/DIF codelets: */
 typedef struct hc2c_desc_s hc2c_desc;
@@ -113,8 +113,8 @@ typedef enum {
 
 typedef struct {
      int (*okp)(
-	  const float *Rp, const float *Ip, const float *Rm, const float *Im,
-	  INT rs, INT mb, INT me, INT ms,
+	  const R *Rp, const R *Ip, const R *Rm, const R *Im, 
+	  INT rs, INT mb, INT me, INT ms, 
 	  const planner *plnr);
      rdft_kind kind;
      INT vl;
@@ -128,14 +128,17 @@ struct hc2c_desc_s {
      opcnt ops;
 };
 
-typedef void (*khc2c) (float *Rp, float *Ip, float *Rm, float *Im, const float *W,
+typedef void (*khc2c) (R *Rp, R *Ip, R *Rm, R *Im, const R *W,
 		       stride rs, INT mb, INT me, INT ms);
-void fftwf_khc2c_register(planner *p, khc2c codelet, const hc2c_desc *desc,
+void X(khc2c_register)(planner *p, khc2c codelet, const hc2c_desc *desc,
 		       hc2c_kind hc2ckind);
 
-extern const solvtab fftwf_solvtab_rdft_r2cf;
-extern const solvtab fftwf_solvtab_rdft_r2cb;
-extern const solvtab fftwf_solvtab_rdft_simd;
+extern const solvtab X(solvtab_rdft_r2cf);
+extern const solvtab X(solvtab_rdft_r2cb);
+extern const solvtab X(solvtab_rdft_sse2);
+extern const solvtab X(solvtab_rdft_avx);
+extern const solvtab X(solvtab_rdft_altivec);
+extern const solvtab X(solvtab_rdft_neon);
 
 /* real-input & output DFT-like codelets (DHT, etc.) */
 typedef struct kr2r_desc_s kr2r_desc;
@@ -152,10 +155,10 @@ struct kr2r_desc_s {
      rdft_kind kind;
 };
 
-typedef void (*kr2r) (const float *I, float *O, stride is, stride os,
+typedef void (*kr2r) (const R *I, R *O, stride is, stride os,
 		      INT vl, INT ivs, INT ovs);
-void fftwf_kr2r_register(planner *p, kr2r codelet, const kr2r_desc *desc);
+void X(kr2r_register)(planner *p, kr2r codelet, const kr2r_desc *desc);
 
-extern const solvtab fftwf_solvtab_rdft_r2r;
+extern const solvtab X(solvtab_rdft_r2r);
 
 #endif				/* __RDFT_CODELET_H__ */

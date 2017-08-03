@@ -1,3 +1,30 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
+/* Do a REDFT00 problem via an R2HC problem, padded symmetrically to
+   twice the size.  This is asymptotically a factor of ~2 worse than
+   redft00e-r2hc.c (the algorithm used in e.g. FFTPACK and Numerical
+   Recipes), but we abandoned the latter after we discovered that it
+   has intrinsic accuracy problems. */
+
 #include "reodft.h"
 
 typedef struct {
@@ -13,32 +40,32 @@ typedef struct {
      INT ivs, ovs;
 } P;
 
-static void apply(const plan *ego_, float *I, float *O)
+static void apply(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is;
      INT i, n = ego->n;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *buf;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof (float) * (2*n), BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * (2*n), BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  buf[0] = I[0];
 	  for (i = 1; i < n; ++i) {
-	       float a = I[i * is];
+	       R a = I[i * is];
 	       buf[i] = a;
 	       buf[2*n - i] = a;
 	  }
 	  buf[i] = I[i * is]; /* i == n, Nyquist */
-
+	  
 	  /* r2hc transform of size 2*n */
 	  {
 	       plan_rdft *cld = (plan_rdft *) ego->cld;
 	       cld->apply((plan *) cld, buf, buf);
 	  }
-
+	  
 	  /* copy n+1 real numbers (real parts of hc array) from buf to O */
 	  {
 	       plan_rdft *cldcpy = (plan_rdft *) ego->cldcpy;
@@ -46,27 +73,27 @@ static void apply(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cld, wakefulness);
-     fftwf_plan_awake(ego->cldcpy, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
+     X(plan_awake)(ego->cldcpy, wakefulness);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cldcpy);
-     fftwf_plan_destroy_internal(ego->cld);
+     X(plan_destroy_internal)(ego->cldcpy);
+     X(plan_destroy_internal)(ego->cld);
 }
 
 static void print(const plan *ego_, printer *p)
 {
      const P *ego = (const P *) ego_;
-     p->print(p, "(redft00e-r2hc-pad-%D%v%(%p%)%(%p%))",
+     p->print(p, "(redft00e-r2hc-pad-%D%v%(%p%)%(%p%))", 
 	      ego->n + 1, ego->vl, ego->cld, ego->cldcpy);
 }
 
@@ -93,13 +120,13 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      P *pln;
      const problem_rdft *p;
      plan *cld = (plan *) 0, *cldcpy;
-     float *buf = (float *) 0;
+     R *buf = (R *) 0;
      INT n;
      INT vl, ivs, ovs;
      opcnt ops;
 
      static const plan_adt padt = {
-	 fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr))
@@ -109,25 +136,25 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 
      n = p->sz->dims[0].n - 1;
      A(n > 0);
-     buf = (float *) MALLOC(sizeof (float) * (2*n), BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * (2*n), BUFFERS);
 
-     cld = fftwf_mkplan_d(plnr,fftwf_mkproblem_rdft_1_d(fftwf_mktensor_1d(2*n,1,1),
-						  fftwf_mktensor_0d(),
+     cld = X(mkplan_d)(plnr,X(mkproblem_rdft_1_d)(X(mktensor_1d)(2*n,1,1), 
+						  X(mktensor_0d)(), 
 						  buf, buf, R2HC));
      if (!cld)
 	  goto nada;
 
-     fftwf_tensor_tornk1(p->vecsz, &vl, &ivs, &ovs);
+     X(tensor_tornk1)(p->vecsz, &vl, &ivs, &ovs);
      cldcpy =
-	  fftwf_mkplan_d(plnr,
-		      fftwf_mkproblem_rdft_1_d(fftwf_mktensor_0d(),
-					    fftwf_mktensor_1d(n+1,1,
-							   p->sz->dims[0].os),
+	  X(mkplan_d)(plnr,
+		      X(mkproblem_rdft_1_d)(X(mktensor_0d)(),
+					    X(mktensor_1d)(n+1,1,
+							   p->sz->dims[0].os), 
 					    buf, TAINT(p->O, ovs), R2HC));
      if (!cldcpy)
 	  goto nada;
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 
      pln = MKPLAN_RDFT(P, &padt, apply);
 
@@ -138,21 +165,21 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->vl = vl;
      pln->ivs = ivs;
      pln->ovs = ovs;
-
-     fftwf_ops_zero(&ops);
+     
+     X(ops_zero)(&ops);
      ops.other = n + 2*n; /* loads + stores (input -> buf) */
 
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &ops, &pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &cld->ops, &pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &cldcpy->ops, &pln->super.super.ops);
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &ops, &pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &cld->ops, &pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &cldcpy->ops, &pln->super.super.ops);
 
      return &(pln->super.super);
 
  nada:
-     fftwf_ifree0(buf);
+     X(ifree0)(buf);
      if (cld)
-	  fftwf_plan_destroy_internal(cld);
+	  X(plan_destroy_internal)(cld);  
      return (plan *)0;
 }
 
@@ -164,9 +191,7 @@ static solver *mksolver(void)
      return &(slv->super);
 }
 
-void fftwf_redft00e_r2hc_pad_register(planner *p)
+void X(redft00e_r2hc_pad_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }
-
-

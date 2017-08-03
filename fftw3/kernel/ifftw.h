@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -23,7 +23,7 @@
 #ifndef __IFFTW_H__
 #define __IFFTW_H__
 
-#include "../config.h"
+#include "config.h"
 
 #include <stdlib.h>		/* size_t */
 #include <stdarg.h>		/* va_list */
@@ -41,6 +41,11 @@
 # include <inttypes.h>           /* uintptr_t, maybe */
 #endif
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif /* __cplusplus */
+
 /* Windows annoyances -- since tests/hook.c uses some internal
    FFTW functions, we need to given them the dllexport attribute
    under Windows when compiling as a DLL (see api/fftw3.h). */
@@ -51,6 +56,24 @@
 #  define IFFTW_EXTERN extern __declspec(dllexport)
 #else
 #  define IFFTW_EXTERN extern
+#endif
+
+/* determine precision and name-mangling scheme */
+#define CONCAT(prefix, name) prefix ## name
+#if defined(FFTW_SINGLE)
+  typedef float R;
+# define X(name) CONCAT(fftwf_, name)
+#elif defined(FFTW_LDOUBLE)
+  typedef long double R;
+# define X(name) CONCAT(fftwl_, name)
+# define TRIGREAL_IS_LONG_DOUBLE
+#elif defined(FFTW_QUAD)
+  typedef __float128 R;
+# define X(name) CONCAT(fftwq_, name)
+# define TRIGREAL_IS_QUAD
+#else
+  typedef double R;
+# define X(name) CONCAT(fftw_, name)
 #endif
 
 /*
@@ -65,19 +88,26 @@ typedef ptrdiff_t INT;
 #define NELEM(array) ((int) (sizeof(array) / sizeof((array)[0])))
 
 #define FFT_SIGN (-1)  /* sign convention for forward transforms */
-extern void fftwf_extract_reim(int sign, float *c, float **r, float **i);
+extern void X(extract_reim)(int sign, R *c, R **r, R **i);
 
-#define REGISTER_SOLVER(p, s) fftwf_solver_register(p, s)
+#define REGISTER_SOLVER(p, s) X(solver_register)(p, s)
 
 #define STRINGIZEx(x) #x
 #define STRINGIZE(x) STRINGIZEx(x)
+#define CIMPLIES(ante, post) (!(ante) || (post))
 
+/* define HAVE_SIMD if any simd extensions are supported */
 #if defined(HAVE_SSE) || defined(HAVE_SSE2) || defined(HAVE_ALTIVEC) || \
-    defined(HAVE_MIPS_PS)
+     defined(HAVE_MIPS_PS) || defined(HAVE_AVX)
 #define HAVE_SIMD 1
 #else
 #define HAVE_SIMD 0
 #endif
+
+extern int X(have_simd_sse2)(void);
+extern int X(have_simd_avx)(void);
+extern int X(have_simd_altivec)(void);
+extern int X(have_simd_neon)(void);
 
 /* forward declarations */
 typedef struct problem_s problem;
@@ -89,8 +119,16 @@ typedef struct scanner_s scanner;
 
 /*-----------------------------------------------------------------------*/
 /* alloca: */
-#if HAVE_SIMD || HAVE_CELL
-#define MIN_ALIGNMENT 16
+#if HAVE_SIMD
+#  ifdef HAVE_AVX
+#    define MIN_ALIGNMENT 32  /* best alignment for AVX, conservative for
+			       * everything else */
+#  else
+     /* Note that we cannot use 32-byte alignment for all SIMD.  For
+	example, MacOS X malloc is 16-byte aligned, but there was no
+	posix_memalign in MacOS X until version 10.6. */
+#    define MIN_ALIGNMENT 16
+#  endif
 #endif
 
 #if defined(HAVE_ALLOCA) && defined(FFTW_ENABLE_ALLOCA)
@@ -120,23 +158,47 @@ void *alloca(size_t);
 #endif
 
 #  ifdef MIN_ALIGNMENT
-#    define STACK_MALLOC(T, p, x)				\
+#    define STACK_MALLOC(T, p, n)				\
      {								\
-         p = (T)alloca((x) + MIN_ALIGNMENT);			\
+         p = (T)alloca((n) + MIN_ALIGNMENT);			\
          p = (T)(((uintptr_t)p + (MIN_ALIGNMENT - 1)) &	\
                (~(uintptr_t)(MIN_ALIGNMENT - 1)));		\
      }
-#    define STACK_FREE(x)
+#    define STACK_FREE(n) 
 #  else /* HAVE_ALLOCA && !defined(MIN_ALIGNMENT) */
-#    define STACK_MALLOC(T, p, x) p = (T)alloca(x)
-#    define STACK_FREE(x)
+#    define STACK_MALLOC(T, p, n) p = (T)alloca(n) 
+#    define STACK_FREE(n) 
 #  endif
 
 #else /* ! HAVE_ALLOCA */
    /* use malloc instead of alloca */
-#  define STACK_MALLOC(T, p, x) p = (T)MALLOC(x, OTHER)
-#  define STACK_FREE(x) fftwf_ifree(x)
+#  define STACK_MALLOC(T, p, n) p = (T)MALLOC(n, OTHER)
+#  define STACK_FREE(n) X(ifree)(n)
 #endif /* ! HAVE_ALLOCA */
+
+/* allocation of buffers.  If these grow too large use malloc(), else
+   use STACK_MALLOC (hopefully reducing to alloca()). */
+
+/* 64KiB ought to be enough for anybody */
+#define MAX_STACK_ALLOC ((size_t)64 * 1024)
+
+#define BUF_ALLOC(T, p, n)			\
+{						\
+     if (n < MAX_STACK_ALLOC) {			\
+	  STACK_MALLOC(T, p, n);		\
+     } else {					\
+	  p = (T)MALLOC(n, BUFFERS);		\
+     }						\
+}
+
+#define BUF_FREE(p, n)				\
+{						\
+     if (n < MAX_STACK_ALLOC) {			\
+	  STACK_FREE(p);			\
+     } else {					\
+	  X(ifree)(p);				\
+     }						\
+}
 
 /*-----------------------------------------------------------------------*/
 /* define uintptr_t if it is not already defined */
@@ -167,28 +229,28 @@ void *alloca(size_t);
 
 /*-----------------------------------------------------------------------*/
 /* assert.c: */
-IFFTW_EXTERN void fftwf_assertion_failed(const char *s,
+IFFTW_EXTERN void X(assertion_failed)(const char *s, 
 				      int line, const char *file);
 
 /* always check */
 #define CK(ex)						 \
-      (void)((ex) || (fftwf_assertion_failed(#ex, __LINE__, __FILE__), 0))
+      (void)((ex) || (X(assertion_failed)(#ex, __LINE__, __FILE__), 0))
 
 #ifdef FFTW_DEBUG
 /* check only if debug enabled */
 #define A(ex)						 \
-      (void)((ex) || (fftwf_assertion_failed(#ex, __LINE__, __FILE__), 0))
+      (void)((ex) || (X(assertion_failed)(#ex, __LINE__, __FILE__), 0))
 #else
 #define A(ex) /* nothing */
 #endif
 
-extern void fftwf_debug(const char *format, ...);
-#define D fftwf_debug
+extern void X(debug)(const char *format, ...);
+#define D X(debug)
 
 /*-----------------------------------------------------------------------*/
 /* kalloc.c: */
-extern void *fftwf_kernel_malloc(size_t n);
-extern void fftwf_kernel_free(void *p);
+extern void *X(kernel_malloc)(size_t n);
+extern void X(kernel_free)(void *p);
 
 /*-----------------------------------------------------------------------*/
 /* alloc.c: */
@@ -210,34 +272,32 @@ enum malloc_tag {
      MALLOC_WHAT_LAST		/* must be last */
 };
 
-IFFTW_EXTERN void fftwf_ifree(void *ptr);
-extern void fftwf_ifree0(void *ptr);
+IFFTW_EXTERN void X(ifree)(void *ptr);
+extern void X(ifree0)(void *ptr);
 
 #ifdef FFTW_DEBUG_MALLOC
 
-IFFTW_EXTERN void *fftwf_malloc_debug(size_t n, enum malloc_tag what,
+IFFTW_EXTERN void *X(malloc_debug)(size_t n, enum malloc_tag what,
 			     const char *file, int line);
-#define MALLOC(n, what) fftwf_malloc_debug(n, what, __FILE__, __LINE__)
-#define NATIVE_MALLOC(n, what) MALLOC(n, what)
-IFFTW_EXTERN void fftwf_malloc_print_minfo(int vrbose);
+#define MALLOC(n, what) X(malloc_debug)(n, what, __FILE__, __LINE__)
+IFFTW_EXTERN void X(malloc_print_minfo)(int vrbose);
 
 #else /* ! FFTW_DEBUG_MALLOC */
 
-IFFTW_EXTERN void *fftwf_malloc_plain(size_t sz);
-#define MALLOC(n, what)  fftwf_malloc_plain(n)
-#define NATIVE_MALLOC(n, what) malloc(n)
+IFFTW_EXTERN void *X(malloc_plain)(size_t sz);
+#define MALLOC(n, what)  X(malloc_plain)(n)
 
 #endif
 
 #if defined(FFTW_DEBUG) && defined(FFTW_DEBUG_MALLOC) && (defined(HAVE_THREADS) || defined(HAVE_OPENMP))
-extern int fftwf_in_thread;
-#  define IN_THREAD fftwf_in_thread
-#  define THREAD_ON { int in_thread_save = fftwf_in_thread; fftwf_in_thread = 1
-#  define THREAD_OFF fftwf_in_thread = in_thread_save; }
+extern int X(in_thread);
+#  define IN_THREAD X(in_thread)
+#  define THREAD_ON { int in_thread_save = X(in_thread); X(in_thread) = 1
+#  define THREAD_OFF X(in_thread) = in_thread_save; }
 #else
 #  define IN_THREAD 0
-#  define THREAD_ON
-#  define THREAD_OFF
+#  define THREAD_ON 
+#  define THREAD_OFF 
 #endif
 
 /*-----------------------------------------------------------------------*/
@@ -271,8 +331,8 @@ extern int fftwf_in_thread;
 # endif
 #endif /* else FAKE_CRUDE_TIME */
 
-crude_time fftwf_get_crude_time(void);
-double fftwf_elapsed_since(const planner *plnr, const problem *p,
+crude_time X(get_crude_time)(void);
+double X(elapsed_since)(const planner *plnr, const problem *p,
 			crude_time t0); /* time in seconds since t0 */
 
 /*-----------------------------------------------------------------------*/
@@ -289,28 +349,28 @@ typedef struct {
      double other;
 } opcnt;
 
-void fftwf_ops_zero(opcnt *dst);
-void fftwf_ops_other(INT o, opcnt *dst);
-void fftwf_ops_cpy(const opcnt *src, opcnt *dst);
+void X(ops_zero)(opcnt *dst);
+void X(ops_other)(INT o, opcnt *dst);
+void X(ops_cpy)(const opcnt *src, opcnt *dst);
 
-void fftwf_ops_add(const opcnt *a, const opcnt *b, opcnt *dst);
-void fftwf_ops_add2(const opcnt *a, opcnt *dst);
+void X(ops_add)(const opcnt *a, const opcnt *b, opcnt *dst);
+void X(ops_add2)(const opcnt *a, opcnt *dst);
 
 /* dst = m * a + b */
-void fftwf_ops_madd(INT m, const opcnt *a, const opcnt *b, opcnt *dst);
+void X(ops_madd)(INT m, const opcnt *a, const opcnt *b, opcnt *dst);
 
 /* dst += m * a */
-void fftwf_ops_madd2(INT m, const opcnt *a, opcnt *dst);
+void X(ops_madd2)(INT m, const opcnt *a, opcnt *dst);
 
 
 /*-----------------------------------------------------------------------*/
 /* minmax.c: */
-INT fftwf_imax(INT a, INT b);
-INT fftwf_imin(INT a, INT b);
+INT X(imax)(INT a, INT b);
+INT X(imin)(INT a, INT b);
 
 /*-----------------------------------------------------------------------*/
 /* iabs.c: */
-INT fftwf_iabs(INT a);
+INT X(iabs)(INT a);
 
 /* inline version */
 #define IABS(x) (((x) < 0) ? (0 - (x)) : (x))
@@ -335,14 +395,14 @@ typedef struct {
 		     good enough for us */
 } md5;
 
-void fftwf_md5begin(md5 *p);
-void fftwf_md5putb(md5 *p, const void *d_, size_t len);
-void fftwf_md5puts(md5 *p, const char *s);
-void fftwf_md5putc(md5 *p, unsigned char c);
-void fftwf_md5int(md5 *p, int i);
-void fftwf_md5INT(md5 *p, INT i);
-void fftwf_md5unsigned(md5 *p, unsigned i);
-void fftwf_md5end(md5 *p);
+void X(md5begin)(md5 *p);
+void X(md5putb)(md5 *p, const void *d_, size_t len);
+void X(md5puts)(md5 *p, const char *s);
+void X(md5putc)(md5 *p, unsigned char c);
+void X(md5int)(md5 *p, int i);
+void X(md5INT)(md5 *p, INT i);
+void X(md5unsigned)(md5 *p, unsigned i);
+void X(md5end)(md5 *p);
 
 /*-----------------------------------------------------------------------*/
 /* tensor.c: */
@@ -370,7 +430,7 @@ typedef struct {
   Definition of rank -infinity.
   This definition has the property that if you want rank 0 or 1,
   you can simply test for rank <= 1.  This is a common case.
-
+ 
   A tensor of rank -infinity has size 0.
 */
 #define RNK_MINFTY  ((int)(((unsigned) -1) >> 1))
@@ -378,59 +438,59 @@ typedef struct {
 
 typedef enum { INPLACE_IS, INPLACE_OS } inplace_kind;
 
-tensor *fftwf_mktensor(int rnk);
-tensor *fftwf_mktensor_0d(void);
-tensor *fftwf_mktensor_1d(INT n, INT is, INT os);
-tensor *fftwf_mktensor_2d(INT n0, INT is0, INT os0,
+tensor *X(mktensor)(int rnk);
+tensor *X(mktensor_0d)(void);
+tensor *X(mktensor_1d)(INT n, INT is, INT os);
+tensor *X(mktensor_2d)(INT n0, INT is0, INT os0,
 		       INT n1, INT is1, INT os1);
-tensor *fftwf_mktensor_3d(INT n0, INT is0, INT os0,
+tensor *X(mktensor_3d)(INT n0, INT is0, INT os0,
 		       INT n1, INT is1, INT os1,
 		       INT n2, INT is2, INT os2);
-tensor *fftwf_mktensor_4d(INT n0, INT is0, INT os0,
+tensor *X(mktensor_4d)(INT n0, INT is0, INT os0,
 		       INT n1, INT is1, INT os1,
 		       INT n2, INT is2, INT os2,
 		       INT n3, INT is3, INT os3);
-tensor *fftwf_mktensor_5d(INT n0, INT is0, INT os0,
+tensor *X(mktensor_5d)(INT n0, INT is0, INT os0,
 		       INT n1, INT is1, INT os1,
 		       INT n2, INT is2, INT os2,
 		       INT n3, INT is3, INT os3,
 		       INT n4, INT is4, INT os4);
-INT fftwf_tensor_sz(const tensor *sz);
-void fftwf_tensor_md5(md5 *p, const tensor *t);
-INT fftwf_tensor_max_index(const tensor *sz);
-INT fftwf_tensor_min_istride(const tensor *sz);
-INT fftwf_tensor_min_ostride(const tensor *sz);
-INT fftwf_tensor_min_stride(const tensor *sz);
-int fftwf_tensor_inplace_strides(const tensor *sz);
-int fftwf_tensor_inplace_strides2(const tensor *a, const tensor *b);
-int fftwf_tensor_strides_decrease(const tensor *sz, const tensor *vecsz,
+INT X(tensor_sz)(const tensor *sz);
+void X(tensor_md5)(md5 *p, const tensor *t);
+INT X(tensor_max_index)(const tensor *sz);
+INT X(tensor_min_istride)(const tensor *sz);
+INT X(tensor_min_ostride)(const tensor *sz);
+INT X(tensor_min_stride)(const tensor *sz);
+int X(tensor_inplace_strides)(const tensor *sz);
+int X(tensor_inplace_strides2)(const tensor *a, const tensor *b);
+int X(tensor_strides_decrease)(const tensor *sz, const tensor *vecsz,
                                inplace_kind k);
-tensor *fftwf_tensor_copy(const tensor *sz);
-int fftwf_tensor_kosherp(const tensor *x);
+tensor *X(tensor_copy)(const tensor *sz);
+int X(tensor_kosherp)(const tensor *x);
 
-tensor *fftwf_tensor_copy_inplace(const tensor *sz, inplace_kind k);
-tensor *fftwf_tensor_copy_except(const tensor *sz, int except_dim);
-tensor *fftwf_tensor_copy_sub(const tensor *sz, int start_dim, int rnk);
-tensor *fftwf_tensor_compress(const tensor *sz);
-tensor *fftwf_tensor_compress_contiguous(const tensor *sz);
-tensor *fftwf_tensor_append(const tensor *a, const tensor *b);
-void fftwf_tensor_split(const tensor *sz, tensor **a, int a_rnk, tensor **b);
-int fftwf_tensor_tornk1(const tensor *t, INT *n, INT *is, INT *os);
-void fftwf_tensor_destroy(tensor *sz);
-void fftwf_tensor_destroy2(tensor *a, tensor *b);
-void fftwf_tensor_destroy4(tensor *a, tensor *b, tensor *c, tensor *d);
-void fftwf_tensor_print(const tensor *sz, printer *p);
-int fftwf_dimcmp(const iodim *a, const iodim *b);
-int fftwf_tensor_equal(const tensor *a, const tensor *b);
-int fftwf_tensor_inplace_locations(const tensor *sz, const tensor *vecsz);
+tensor *X(tensor_copy_inplace)(const tensor *sz, inplace_kind k);
+tensor *X(tensor_copy_except)(const tensor *sz, int except_dim);
+tensor *X(tensor_copy_sub)(const tensor *sz, int start_dim, int rnk);
+tensor *X(tensor_compress)(const tensor *sz);
+tensor *X(tensor_compress_contiguous)(const tensor *sz);
+tensor *X(tensor_append)(const tensor *a, const tensor *b);
+void X(tensor_split)(const tensor *sz, tensor **a, int a_rnk, tensor **b);
+int X(tensor_tornk1)(const tensor *t, INT *n, INT *is, INT *os);
+void X(tensor_destroy)(tensor *sz);
+void X(tensor_destroy2)(tensor *a, tensor *b);
+void X(tensor_destroy4)(tensor *a, tensor *b, tensor *c, tensor *d);
+void X(tensor_print)(const tensor *sz, printer *p);
+int X(dimcmp)(const iodim *a, const iodim *b);
+int X(tensor_equal)(const tensor *a, const tensor *b);
+int X(tensor_inplace_locations)(const tensor *sz, const tensor *vecsz);
 
 /*-----------------------------------------------------------------------*/
 /* problem.c: */
-enum {
+enum { 
      /* a problem that cannot be solved */
      PROBLEM_UNSOLVABLE,
 
-     PROBLEM_DFT,
+     PROBLEM_DFT, 
      PROBLEM_RDFT,
      PROBLEM_RDFT2,
 
@@ -440,7 +500,7 @@ enum {
      PROBLEM_MPI_RDFT2,
      PROBLEM_MPI_TRANSPOSE,
 
-     PROBLEM_LAST
+     PROBLEM_LAST 
 };
 
 typedef struct {
@@ -455,9 +515,9 @@ struct problem_s {
      const problem_adt *adt;
 };
 
-problem *fftwf_mkproblem(size_t sz, const problem_adt *adt);
-void fftwf_problem_destroy(problem *ego);
-problem *fftwf_mkproblem_unsolvable(void);
+problem *X(mkproblem)(size_t sz, const problem_adt *adt);
+void X(problem_destroy)(problem *ego);
+problem *X(mkproblem_unsolvable)(void);
 
 /*-----------------------------------------------------------------------*/
 /* print.c */
@@ -470,10 +530,10 @@ struct printer_s {
      int indent_incr;
 };
 
-printer *fftwf_mkprinter(size_t size,
+printer *X(mkprinter)(size_t size, 
 		      void (*putchr)(printer *p, char c),
 		      void (*cleanup)(printer *p));
-IFFTW_EXTERN void fftwf_printer_destroy(printer *p);
+IFFTW_EXTERN void X(printer_destroy)(printer *p);
 
 /*-----------------------------------------------------------------------*/
 /* scan.c */
@@ -484,8 +544,8 @@ struct scanner_s {
      int ungotc;
 };
 
-scanner *fftwf_mkscanner(size_t size, int (*getchr)(scanner *sc));
-void fftwf_scanner_destroy(scanner *sc);
+scanner *X(mkscanner)(size_t size, int (*getchr)(scanner *sc));
+void X(scanner_destroy)(scanner *sc);
 
 /*-----------------------------------------------------------------------*/
 /* plan.c: */
@@ -512,10 +572,10 @@ struct plan_s {
      int could_prune_now_p;
 };
 
-plan *fftwf_mkplan(size_t size, const plan_adt *adt);
-void fftwf_plan_destroy_internal(plan *ego);
-IFFTW_EXTERN void fftwf_plan_awake(plan *ego, enum wakefulness wakefulness);
-void fftwf_plan_null_destroy(plan *ego);
+plan *X(mkplan)(size_t size, const plan_adt *adt);
+void X(plan_destroy_internal)(plan *ego);
+IFFTW_EXTERN void X(plan_awake)(plan *ego, enum wakefulness wakefulness);
+void X(plan_null_destroy)(plan *ego);
 
 /*-----------------------------------------------------------------------*/
 /* solver.c: */
@@ -530,13 +590,13 @@ struct solver_s {
      int refcnt;
 };
 
-solver *fftwf_mksolver(size_t size, const solver_adt *adt);
-void fftwf_solver_use(solver *ego);
-void fftwf_solver_destroy(solver *ego);
-void fftwf_solver_register(planner *plnr, solver *s);
+solver *X(mksolver)(size_t size, const solver_adt *adt);
+void X(solver_use)(solver *ego);
+void X(solver_destroy)(solver *ego);
+void X(solver_register)(planner *plnr, solver *s);
 
 /* shorthand */
-#define MKSOLVER(type, adt) (type *)fftwf_mksolver(sizeof(type), adt)
+#define MKSOLVER(type, adt) (type *)X(mksolver)(sizeof(type), adt)
 
 /*-----------------------------------------------------------------------*/
 /* planner.c */
@@ -551,12 +611,12 @@ typedef struct slvdesc_s {
 
 typedef struct solution_s solution; /* opaque */
 
-/* interpretation of L and U:
+/* interpretation of L and U: 
 
    - if it returns a plan, the planner guarantees that all applicable
      plans at least as impatient as U have been tried, and that each
      plan in the solution is at least as impatient as L.
-
+   
    - if it returns 0, the planner guarantees to have tried all solvers
      at least as impatient as L, and that none of them was applicable.
 
@@ -569,7 +629,7 @@ typedef struct {
 #    define BITS_FOR_TIMELIMIT 9
      unsigned timelimit_impatience:BITS_FOR_TIMELIMIT;
      unsigned u:20;
-
+     
      /* abstraction break: we store the solver here to pad the
 	structure to 64 bits.  Otherwise, the struct is padded to 64
 	bits anyway, and another word is allocated for slvndx. */
@@ -635,12 +695,12 @@ enum {
 
 typedef enum { FORGET_ACCURSED, FORGET_EVERYTHING } amnesia;
 
-typedef enum {
+typedef enum { 
      /* WISDOM_NORMAL: planner may or may not use wisdom */
-     WISDOM_NORMAL,
+     WISDOM_NORMAL, 
 
      /* WISDOM_ONLY: planner must use wisdom and must avoid searching */
-     WISDOM_ONLY,
+     WISDOM_ONLY, 
 
      /* WISDOM_IS_BOGUS: planner must return 0 as quickly as possible */
      WISDOM_IS_BOGUS,
@@ -676,9 +736,12 @@ typedef enum { COST_SUM, COST_MAX } cost_kind;
 
 struct planner_s {
      const planner_adt *adt;
-     void (*hook)(struct planner_s *plnr, plan *pln,
+     void (*hook)(struct planner_s *plnr, plan *pln, 
 		  const problem *p, int optimalp);
      double (*cost_hook)(const problem *p, double t, cost_kind k);
+     int (*wisdom_ok_hook)(const problem *p, flags_t flags);
+     void (*nowisdom_hook)(const problem *p);
+     wisdom_state_t (*bogosity_hook)(wisdom_state_t state, const problem *p);
 
      /* solver descriptors */
      slvdesc *slvdescs;
@@ -706,12 +769,12 @@ struct planner_s {
      int nprob;    /* number of problems evaluated */
 };
 
-planner *fftwf_mkplanner(void);
-void fftwf_planner_destroy(planner *ego);
+planner *X(mkplanner)(void);
+void X(planner_destroy)(planner *ego);
 
 /*
   Iterate over all solvers.   Read:
-
+ 
   @article{ baker93iterators,
   author = "Henry G. Baker, Jr.",
   title = "Iterators: Signs of Weakness in Object-Oriented Languages",
@@ -744,8 +807,8 @@ void fftwf_planner_destroy(planner *ego);
 
 
 /* make plan, destroy problem */
-plan *fftwf_mkplan_d(planner *ego, problem *p);
-plan *fftwf_mkplan_f_d(planner *ego, problem *p,
+plan *X(mkplan_d)(planner *ego, problem *p);
+plan *X(mkplan_f_d)(planner *ego, problem *p, 
 		    unsigned l_set, unsigned u_set, unsigned u_reset);
 
 /*-----------------------------------------------------------------------*/
@@ -756,16 +819,16 @@ plan *fftwf_mkplan_f_d(planner *ego, problem *p,
 #define PRECOMPUTE_ARRAY_INDICES
 #endif
 
-extern const INT fftwf_an_INT_guaranteed_to_be_zero;
+extern const INT X(an_INT_guaranteed_to_be_zero);
 
 #ifdef PRECOMPUTE_ARRAY_INDICES
 typedef INT *stride;
 #define WS(stride, i)  (stride[i])
-extern stride fftwf_mkstride(INT n, INT s);
-void fftwf_stride_destroy(stride p);
+extern stride X(mkstride)(INT n, INT s);
+void X(stride_destroy)(stride p);
 /* hackery to prevent the compiler from copying the strides array
    onto the stack */
-#define MAKE_VOLATILE_STRIDE(x) (x) = (x) + fftwf_an_INT_guaranteed_to_be_zero
+#define MAKE_VOLATILE_STRIDE(nptr, x) (x) = (x) + X(an_INT_guaranteed_to_be_zero)
 #else
 
 typedef INT stride;
@@ -778,9 +841,26 @@ typedef INT stride;
 #define fftwl_stride_destroy(p) ((void) p)
 
 /* hackery to prevent the compiler from ``optimizing'' induction
-   variables in codelet loops. */
-#define MAKE_VOLATILE_STRIDE(x) (x) = (x) ^ fftwf_an_INT_guaranteed_to_be_zero
+   variables in codelet loops.  The problem is that for each K and for
+   each expression of the form P[I + STRIDE * K] in a loop, most
+   compilers will try to lift an induction variable PK := &P[I + STRIDE * K].
+   For large values of K this behavior overflows the
+   register set, which is likely worse than doing the index computation
+   in the first place.
 
+   If we guess that there are more than
+   ESTIMATED_AVAILABLE_INDEX_REGISTERS such pointers, we deliberately confuse
+   the compiler by setting STRIDE ^= ZERO, where ZERO is a value guaranteed to
+   be 0, but the compiler does not know this. 
+
+   16 registers ought to be enough for anybody, or so the amd64 and ARM ISA's
+   seem to imply.
+*/
+#define ESTIMATED_AVAILABLE_INDEX_REGISTERS 16
+#define MAKE_VOLATILE_STRIDE(nptr, x)                   \
+     (nptr <= ESTIMATED_AVAILABLE_INDEX_REGISTERS ?     \
+        0 :                                             \
+      ((x) = (x) ^ X(an_INT_guaranteed_to_be_zero)))
 #endif /* PRECOMPUTE_ARRAY_INDICES */
 
 /*-----------------------------------------------------------------------*/
@@ -788,19 +868,19 @@ typedef INT stride;
 
 struct solvtab_s { void (*reg)(planner *); const char *reg_nam; };
 typedef struct solvtab_s solvtab[];
-void fftwf_solvtab_exec(const solvtab tbl, planner *p);
+void X(solvtab_exec)(const solvtab tbl, planner *p);
 #define SOLVTAB(s) { s, STRINGIZE(s) }
 #define SOLVTAB_END { 0, 0 }
 
 /*-----------------------------------------------------------------------*/
 /* pickdim.c */
-int fftwf_pickdim(int which_dim, const int *buddies, int nbuddies,
+int X(pickdim)(int which_dim, const int *buddies, int nbuddies,
 	       const tensor *sz, int oop, int *dp);
 
 /*-----------------------------------------------------------------------*/
 /* twiddle.c */
 /* little language to express twiddle factors computation */
-enum { TW_COS = 0, TW_SIN = 1, TW_CEXP = 2, TW_NEXT = 3,
+enum { TW_COS = 0, TW_SIN = 1, TW_CEXP = 2, TW_NEXT = 3, 
        TW_FULL = 4, TW_HALF = 5 };
 
 typedef struct {
@@ -810,7 +890,7 @@ typedef struct {
 } tw_instr;
 
 typedef struct twid_s {
-     float *W;                     /* array of twiddle factors */
+     R *W;                     /* array of twiddle factors */
      INT n, r, m;                /* transform order, radix, # twiddle rows */
      int refcnt;
      const tw_instr *instr;
@@ -818,14 +898,16 @@ typedef struct twid_s {
      enum wakefulness wakefulness;
 } twid;
 
-INT fftwf_twiddle_length(INT r, const tw_instr *p);
-void fftwf_twiddle_awake(enum wakefulness wakefulness,
+INT X(twiddle_length)(INT r, const tw_instr *p);
+void X(twiddle_awake)(enum wakefulness wakefulness,
 		      twid **pp, const tw_instr *instr, INT n, INT r, INT m);
 
 /*-----------------------------------------------------------------------*/
 /* trig.c */
-#ifdef TRIGREAL_IS_LONG_DOUBLE
+#if defined(TRIGREAL_IS_LONG_DOUBLE)
    typedef long double trigreal;
+#elif defined(TRIGREAL_IS_QUAD)
+   typedef __float128 trigreal;
 #else
    typedef double trigreal;
 #endif
@@ -833,9 +915,9 @@ void fftwf_twiddle_awake(enum wakefulness wakefulness,
 typedef struct triggen_s triggen;
 
 struct triggen_s {
-     void (*cexp)(triggen *t, INT m, float *result);
+     void (*cexp)(triggen *t, INT m, R *result);
      void (*cexpl)(triggen *t, INT m, trigreal *result);
-     void (*rotate)(triggen *p, INT m, float xr, float xi, float *res);
+     void (*rotate)(triggen *p, INT m, R xr, R xi, R *res);
 
      INT twshft;
      INT twradix;
@@ -844,35 +926,42 @@ struct triggen_s {
      INT n;
 };
 
-triggen *fftwf_mktriggen(enum wakefulness wakefulness, INT n);
-void fftwf_triggen_destroy(triggen *p);
+triggen *X(mktriggen)(enum wakefulness wakefulness, INT n);
+void X(triggen_destroy)(triggen *p);
 
 /*-----------------------------------------------------------------------*/
 /* primes.c: */
 
 #define MULMOD(x, y, p) \
-   (((x) <= 92681 - (y)) ? ((x) * (y)) % (p) : fftwf_safe_mulmod(x, y, p))
+   (((x) <= 92681 - (y)) ? ((x) * (y)) % (p) : X(safe_mulmod)(x, y, p))
 
-INT fftwf_safe_mulmod(INT x, INT y, INT p);
-INT fftwf_power_mod(INT n, INT m, INT p);
-INT fftwf_find_generator(INT p);
-INT fftwf_first_divisor(INT n);
-int fftwf_is_prime(INT n);
-INT fftwf_next_prime(INT n);
-int fftwf_factors_into(INT n, const INT *primes);
-INT fftwf_choose_radix(INT r, INT n);
-INT fftwf_isqrt(INT n);
-INT fftwf_modulo(INT a, INT n);
+INT X(safe_mulmod)(INT x, INT y, INT p);
+INT X(power_mod)(INT n, INT m, INT p);
+INT X(find_generator)(INT p);
+INT X(first_divisor)(INT n);
+int X(is_prime)(INT n);
+INT X(next_prime)(INT n);
+int X(factors_into)(INT n, const INT *primes);
+int X(factors_into_small_primes)(INT n);
+INT X(choose_radix)(INT r, INT n);
+INT X(isqrt)(INT n);
+INT X(modulo)(INT a, INT n);
 
 #define GENERIC_MIN_BAD 173 /* min prime for which generic becomes bad */
+
+/* thresholds below which certain solvers are considered SLOW.  These are guesses
+   believed to be conservative */
+#define GENERIC_MAX_SLOW     16
+#define RADER_MAX_SLOW       32
+#define BLUESTEIN_MAX_SLOW   24
 
 /*-----------------------------------------------------------------------*/
 /* rader.c: */
 typedef struct rader_tls rader_tl;
 
-void fftwf_rader_tl_insert(INT k1, INT k2, INT k3, float *W, rader_tl **tl);
-float *fftwf_rader_tl_find(INT k1, INT k2, INT k3, rader_tl *t);
-void fftwf_rader_tl_delete(float *W, rader_tl **tl);
+void X(rader_tl_insert)(INT k1, INT k2, INT k3, R *W, rader_tl **tl);
+R *X(rader_tl_find)(INT k1, INT k2, INT k3, rader_tl *t);
+void X(rader_tl_delete)(R *W, rader_tl **tl);
 
 /*-----------------------------------------------------------------------*/
 /* copy/transposition routines */
@@ -880,82 +969,79 @@ void fftwf_rader_tl_delete(float *W, rader_tl **tl);
 /* lower bound to the cache size, for tiled routines */
 #define CACHESIZE 8192
 
-INT fftwf_compute_tilesz(INT vl, int how_many_tiles_in_cache);
+INT X(compute_tilesz)(INT vl, int how_many_tiles_in_cache);
 
-void fftwf_tile2d(INT n0l, INT n0u, INT n1l, INT n1u, INT tilesz,
+void X(tile2d)(INT n0l, INT n0u, INT n1l, INT n1u, INT tilesz,
 	       void (*f)(INT n0l, INT n0u, INT n1l, INT n1u, void *args),
 	       void *args);
-void fftwf_cpy1d(float *I, float *O, INT n0, INT is0, INT os0, INT vl);
-void fftwf_cpy2d(float *I, float *O,
+void X(cpy1d)(R *I, R *O, INT n0, INT is0, INT os0, INT vl);
+void X(cpy2d)(R *I, R *O,
 	      INT n0, INT is0, INT os0,
 	      INT n1, INT is1, INT os1,
 	      INT vl);
-void fftwf_cpy2d_ci(float *I, float *O,
+void X(cpy2d_ci)(R *I, R *O,
 		 INT n0, INT is0, INT os0,
 		 INT n1, INT is1, INT os1,
 		 INT vl);
-void fftwf_cpy2d_co(float *I, float *O,
+void X(cpy2d_co)(R *I, R *O,
 		 INT n0, INT is0, INT os0,
 		 INT n1, INT is1, INT os1,
 		 INT vl);
-void fftwf_cpy2d_tiled(float *I, float *O,
+void X(cpy2d_tiled)(R *I, R *O,
 		    INT n0, INT is0, INT os0,
-		    INT n1, INT is1, INT os1,
+		    INT n1, INT is1, INT os1, 
 		    INT vl);
-void fftwf_cpy2d_tiledbuf(float *I, float *O,
+void X(cpy2d_tiledbuf)(R *I, R *O,
 		       INT n0, INT is0, INT os0,
-		       INT n1, INT is1, INT os1,
+		       INT n1, INT is1, INT os1, 
 		       INT vl);
-void fftwf_cpy2d_pair(float *I0, float *I1, float *O0, float *O1,
+void X(cpy2d_pair)(R *I0, R *I1, R *O0, R *O1,
 		   INT n0, INT is0, INT os0,
 		   INT n1, INT is1, INT os1);
-void fftwf_cpy2d_pair_ci(float *I0, float *I1, float *O0, float *O1,
+void X(cpy2d_pair_ci)(R *I0, R *I1, R *O0, R *O1,
 		      INT n0, INT is0, INT os0,
 		      INT n1, INT is1, INT os1);
-void fftwf_cpy2d_pair_co(float *I0, float *I1, float *O0, float *O1,
+void X(cpy2d_pair_co)(R *I0, R *I1, R *O0, R *O1,
 		      INT n0, INT is0, INT os0,
 		      INT n1, INT is1, INT os1);
 
-void fftwf_transpose(float *I, INT n, INT s0, INT s1, INT vl);
-void fftwf_transpose_tiled(float *I, INT n, INT s0, INT s1, INT vl);
-void fftwf_transpose_tiledbuf(float *I, INT n, INT s0, INT s1, INT vl);
+void X(transpose)(R *I, INT n, INT s0, INT s1, INT vl);
+void X(transpose_tiled)(R *I, INT n, INT s0, INT s1, INT vl);
+void X(transpose_tiledbuf)(R *I, INT n, INT s0, INT s1, INT vl);
 
-typedef void (*transpose_func)(float *I, INT n, INT s0, INT s1, INT vl);
-typedef void (*cpy2d_func)(float *I, float *O,
+typedef void (*transpose_func)(R *I, INT n, INT s0, INT s1, INT vl);
+typedef void (*cpy2d_func)(R *I, R *O,
 			   INT n0, INT is0, INT os0,
 			   INT n1, INT is1, INT os1,
 			   INT vl);
 
-#if HAVE_CELL
-int fftwf_cell_transpose_applicable)(R *I, const iodim *d, INT vl);
-void fftwf_cell_transpose)(R *I, INT n, INT s0, INT s1, INT vl);
-int fftwf_cell_copy_applicable)(R *I, R *O, const iodim *n, const iodim *v);
-void fftwf_cell_copy)(R *I, R *O, const iodim *n, const iodim *v);
-#endif
-
 /*-----------------------------------------------------------------------*/
 /* misc stuff */
-void fftwf_null_awake(plan *ego, enum wakefulness wakefulness);
-double fftwf_iestimate_cost(const planner *, const plan *, const problem *);
+void X(null_awake)(plan *ego, enum wakefulness wakefulness);
+double X(iestimate_cost)(const planner *, const plan *, const problem *);
 
-double fftwf_measure_execution_time(const planner *plnr,
+#ifdef FFTW_RANDOM_ESTIMATOR
+extern unsigned X(random_estimate_seed);
+#endif
+
+double X(measure_execution_time)(const planner *plnr, 
 				 plan *pln, const problem *p);
-int fftwf_alignment_of(float *p);
-unsigned fftwf_hash(const char *s);
-INT fftwf_nbuf(INT n, INT vl, INT maxnbuf);
-int fftwf_nbuf_redundant(INT n, INT vl, int which,
+IFFTW_EXTERN int X(alignment_of)(R *p);
+unsigned X(hash)(const char *s);
+INT X(nbuf)(INT n, INT vl, INT maxnbuf);
+int X(nbuf_redundant)(INT n, INT vl, int which, 
 		      const INT *maxnbuf, int nmaxnbuf);
-INT fftwf_bufdist(INT n, INT vl);
-int fftwf_toobig(INT n);
-int fftwf_ct_uglyp(INT min_n, INT v, INT n, INT r);
+INT X(bufdist)(INT n, INT vl);
+int X(toobig)(INT n);
+int X(ct_uglyp)(INT min_n, INT v, INT n, INT r);
 
-#if HAVE_SIMD || HAVE_CELL
-R *fftwf_taint)(R *p, INT s);
-R *fftwf_join_taint)(R *p1, R *p2);
-#define TAINT(p, s) fftwf_taint)(p, s)
+#if HAVE_SIMD
+R *X(taint)(R *p, INT s);
+R *X(join_taint)(R *p1, R *p2);
+#define TAINT(p, s) X(taint)(p, s)
 #define UNTAINT(p) ((R *) (((uintptr_t) (p)) & ~(uintptr_t)3))
 #define TAINTOF(p) (((uintptr_t)(p)) & 3)
-#define JOIN_TAINT(p1, p2) fftwf_join_taint)(p1, p2)
+#define JOIN_TAINT(p1, p2) X(join_taint)(p1, p2)
 #else
 #define TAINT(p, s) (p)
 #define UNTAINT(p) (p)
@@ -969,7 +1055,7 @@ R *fftwf_join_taint)(R *p1, R *p2);
      CK(!(((uintptr_t) &__foo) & 0x7));		\
 }
 #else
-#  define ASSERT_ALIGNED_DOUBLE
+#  define ASSERT_ALIGNED_DOUBLE 
 #endif /* FFTW_DEBUG_ALIGNMENT */
 
 
@@ -977,10 +1063,12 @@ R *fftwf_join_taint)(R *p1, R *p2);
 /*-----------------------------------------------------------------------*/
 /* macros used in codelets to reduce source code size */
 
-typedef float E;  /* internal precision of codelets. */
+typedef R E;  /* internal precision of codelets. */
 
-#ifdef FFTW_LDOUBLE
+#if defined(FFTW_LDOUBLE)
 #  define K(x) ((E) x##L)
+#elif defined(FFTW_QUAD)
+#  define K(x) ((E) x##Q)
 #else
 #  define K(x) ((E) x)
 #endif
@@ -1006,7 +1094,7 @@ typedef float E;  /* internal precision of codelets. */
 
      asm ("# confuse gcc %0" : "=f"(a) : "0"(a));
      return a * b + c;
-
+     
    in each of the FMA, FMS, FNMA, and FNMS functions.  However, this
    does not solve the problem either, because two equal asm statements
    count as a common subexpression!  One must use *different* fake asm
@@ -1065,56 +1153,8 @@ static __inline__ E FNMS(E a, E b, E c)
 #define FNMS(a, b, c) ((c) - ((a) * (b)))
 #endif
 
-/* stack-alignment hackery */
-#ifdef __ICC /* Intel's compiler for ia32 */
-#define WITH_ALIGNED_STACK(what)				\
-{								\
-     /*								\
-      * Simply calling alloca seems to do the right thing.	\
-      * The size of the allocated block seems to be irrelevant.	\
-      */							\
-     _alloca(16);						\
-     what							\
-}
-#endif
-
-#if defined(__GNUC__) && defined(__i386__) && !defined(WITH_ALIGNED_STACK) \
-    && !(defined(__MACOSX__) || defined(__APPLE__)) /* OSX ABI is aligned */
-/*
- * horrible hack to align the stack to a 16-byte boundary.
- *
- * We assume a gcc version >= 2.95 so that
- * -mpreferred-stack-boundary works.  Otherwise, all bets are
- * off.  However, -mpreferred-stack-boundary does not create a
- * stack alignment, but it only preserves it.  Unfortunately,
- * many versions of libc on linux call main() with the wrong
- * initial stack alignment, with the result that the code is now
- * pessimally aligned instead of having a 50% chance of being
- * correct.
- */
-
-#define WITH_ALIGNED_STACK(what)				\
-{								\
-     /*								\
-      * Use alloca to allocate some memory on the stack.	\
-      * This alerts gcc that something funny is going		\
-      * on, so that it does not omit the frame pointer		\
-      * etc.							\
-      */							\
-     (void)__builtin_alloca(16);				\
-								\
-     /*								\
-      * Now align the stack pointer				\
-      */							\
-     __asm__ __volatile__ ("andl $-16, %esp");			\
-								\
-     what							\
-}
-#endif
-
-#ifndef WITH_ALIGNED_STACK
-#define WITH_ALIGNED_STACK(what) what
-#endif
+#ifdef __cplusplus
+}  /* extern "C" */
+#endif /* __cplusplus */
 
 #endif /* __IFFTW_H__ */
-

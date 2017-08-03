@@ -1,3 +1,26 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
+/* direct RDFT solver, using r2r codelets */
+
 #include "rdft.h"
 
 typedef struct {
@@ -15,7 +38,7 @@ typedef struct {
      const S *slv;
 } P;
 
-static void apply(const plan *ego_, float *I, float *O)
+static void apply(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      ASSERT_ALIGNED_DOUBLE;
@@ -25,8 +48,8 @@ static void apply(const plan *ego_, float *I, float *O)
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_stride_destroy(ego->is);
-     fftwf_stride_destroy(ego->os);
+     X(stride_destroy)(ego->is);
+     X(stride_destroy)(ego->os);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -34,8 +57,8 @@ static void print(const plan *ego_, printer *p)
      const P *ego = (const P *) ego_;
      const S *s = ego->slv;
 
-     p->print(p, "(rdft-%s-direct-r2r-%D%v \"%s\")",
-	      fftwf_rdft_kind_str(s->desc->kind), s->desc->n,
+     p->print(p, "(rdft-%s-direct-r2r-%D%v \"%s\")", 
+	      X(rdft_kind_str)(s->desc->kind), s->desc->n,
 	      ego->vl, s->desc->nam);
 }
 
@@ -54,7 +77,7 @@ static int applicable(const solver *ego_, const problem *p_)
 	  && p->kind[0] == ego->desc->kind
 
 	  /* check strides etc */
-	  && fftwf_tensor_tornk1(p->vecsz, &vl, &ivs, &ovs)
+	  && X(tensor_tornk1)(p->vecsz, &vl, &ivs, &ovs)
 
 	  && (0
 	      /* can operate out-of-place */
@@ -64,7 +87,7 @@ static int applicable(const solver *ego_, const problem *p_)
 	      || vl == 1
 
 	      /* can operate in-place as long as strides are the same */
-	      || fftwf_tensor_inplace_strides2(p->sz, p->vecsz)
+	      || X(tensor_inplace_strides2)(p->sz, p->vecsz)
 	       )
 	  );
 }
@@ -77,7 +100,7 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      iodim *d;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, fftwf_null_awake, print, destroy
+	  X(rdft_solve), X(null_awake), print, destroy
      };
 
      UNUSED(plnr);
@@ -94,14 +117,14 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 
      pln->k = ego->k;
 
-     pln->is = fftwf_mkstride(d->n, d->is);
-     pln->os = fftwf_mkstride(d->n, d->os);
+     pln->is = X(mkstride)(d->n, d->is);
+     pln->os = X(mkstride)(d->n, d->os);
 
-     fftwf_tensor_tornk1(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
+     X(tensor_tornk1)(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
 
      pln->slv = ego;
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl / ego->desc->genus->vl,
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(pln->vl / ego->desc->genus->vl,
 		  &ego->desc->ops,
 		  &pln->super.super.ops);
 
@@ -111,7 +134,7 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 }
 
 /* constructor */
-solver *fftwf_mksolver_rdft_r2r_direct(kr2r k, const kr2r_desc *desc)
+solver *X(mksolver_rdft_r2r_direct)(kr2r k, const kr2r_desc *desc)
 {
      static const solver_adt sadt = { PROBLEM_RDFT, mkplan, 0 };
      S *slv = MKSOLVER(S, &sadt);
@@ -119,3 +142,4 @@ solver *fftwf_mksolver_rdft_r2r_direct(kr2r k, const kr2r_desc *desc)
      slv->desc = desc;
      return &(slv->super);
 }
+

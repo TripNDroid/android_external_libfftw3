@@ -1,3 +1,26 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
+/* plans for rank-0 RDFT2 (copy operations, plus setting 0 imag. parts) */
+
 #include "rdft.h"
 
 #ifdef HAVE_STRING_H
@@ -24,16 +47,16 @@ static int applicable(const problem *p_)
 		 ||
 		 (1
 		  && p->kind == R2HC
-
+		
 		  && p->vecsz->rnk <= 1
-
-		  && ((p->r0 != p->cr)
-		      ||
-		      fftwf_rdft2_inplace_strides(p, RNK_MINFTY)) ))
+  
+		  && ((p->r0 != p->cr) 
+		      || 
+		      X(rdft2_inplace_strides)(p, RNK_MINFTY)) ))
 	  );
 }
 
-static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
+static void apply_r2hc(const plan *ego_, R *r0, R *r1, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      INT i, vl = ego->vl;
@@ -42,7 +65,7 @@ static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float 
      UNUSED(r1); /* rank-0 has no real odd-index elements */
 
      for (i = 4; i <= vl; i += 4) {
-          float x0, x1, x2, x3;
+          R x0, x1, x2, x3;
           x0 = *r0; r0 += ivs;
           x1 = *r0; r0 += ivs;
           x2 = *r0; r0 += ivs;
@@ -57,7 +80,7 @@ static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float 
 	  *ci = K(0.0); ci += ovs;
      }
      for (; i < vl + 4; ++i) {
-          float x0;
+          R x0;
           x0 = *r0; r0 += ivs;
           *cr = x0; cr += ovs;
 	  *ci = K(0.0); ci += ovs;
@@ -65,7 +88,7 @@ static void apply_r2hc(const plan *ego_, float *r0, float *r1, float *cr, float 
 }
 
 /* in-place r2hc rank-0: set imaginary parts of output to 0 */
-static void apply_r2hc_inplace(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
+static void apply_r2hc_inplace(const plan *ego_, R *r0, R *r1, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      INT i, vl = ego->vl;
@@ -86,7 +109,7 @@ static void apply_r2hc_inplace(const plan *ego_, float *r0, float *r1, float *cr
 
 /* a rank-0 HC2R rdft2 problem is just a copy from cr to r0,
    so we can use a rank-0 rdft plan */
-static void apply_hc2r(const plan *ego_, float *r0, float *r1, float *cr, float *ci)
+static void apply_hc2r(const plan *ego_, R *r0, R *r1, R *cr, R *ci)
 {
      const P *ego = (const P *) ego_;
      plan_rdft *cldcpy = (plan_rdft *) ego->cldcpy;
@@ -99,14 +122,14 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
      if (ego->cldcpy)
-	  fftwf_plan_awake(ego->cldcpy, wakefulness);
+	  X(plan_awake)(ego->cldcpy, wakefulness);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
      if (ego->cldcpy)
-	  fftwf_plan_destroy_internal(ego->cldcpy);
+	  X(plan_destroy_internal)(ego->cldcpy);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -125,7 +148,7 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      P *pln;
 
      static const plan_adt padt = {
-	  fftwf_rdft2_solve, awake, print, destroy
+	  X(rdft2_solve), awake, print, destroy
      };
 
      UNUSED(ego_);
@@ -136,25 +159,25 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      p = (const problem_rdft2 *) p_;
 
      if (p->kind == HC2R) {
-	  cldcpy = fftwf_mkplan_d(plnr,
-			       fftwf_mkproblem_rdft_0_d(
-				    fftwf_tensor_copy(p->vecsz),
+	  cldcpy = X(mkplan_d)(plnr,
+			       X(mkproblem_rdft_0_d)(
+				    X(tensor_copy)(p->vecsz),
 				    p->cr, p->r0));
 	  if (!cldcpy) return (plan *) 0;
      }
 
-     pln = MKPLAN_RDFT2(P, &padt,
-			p->kind == R2HC ?
-			(p->r0 == p->cr ? apply_r2hc_inplace : apply_r2hc)
+     pln = MKPLAN_RDFT2(P, &padt, 
+			p->kind == R2HC ? 
+			(p->r0 == p->cr ? apply_r2hc_inplace : apply_r2hc) 
 			: apply_hc2r);
-
+     
      if (p->kind == R2HC)
-	  fftwf_tensor_tornk1(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
+	  X(tensor_tornk1)(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
      pln->cldcpy = cldcpy;
 
      if (p->kind == R2HC) {
 	  /* vl loads, 2*vl stores */
-	  fftwf_ops_other(3 * pln->vl, &pln->super.super.ops);
+	  X(ops_other)(3 * pln->vl, &pln->super.super.ops);
      }
      else {
 	  pln->super.super.ops = cldcpy->ops;
@@ -170,7 +193,7 @@ static solver *mksolver(void)
      return &(slv->super);
 }
 
-void fftwf_rdft2_rank0_register(planner *p)
+void X(rdft2_rank0_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }

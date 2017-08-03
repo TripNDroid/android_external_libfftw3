@@ -1,4 +1,22 @@
-
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
 
 #include "rdft.h"
 
@@ -22,7 +40,7 @@ typedef struct {
      plan_rdft super;
 
      plan *cld1, *cld2;
-     float *omega;
+     R *omega;
      INT n, npad, g, ginv;
      INT is, os;
      plan *cld_omega;
@@ -38,20 +56,20 @@ static rader_tl *omegas = 0;
    plan/codelets for both Rader children. */
 #define R2HC_ONLY_CONV 1
 
-static void apply(const plan *ego_, float *I, float *O)
+static void apply(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT n = ego->n; /* prime */
      INT npad = ego->npad; /* == n - 1 for unpadded Rader; always even */
      INT is = ego->is, os;
      INT k, gpower, g;
-     float *buf, *omega;
-     float r0;
+     R *buf, *omega;
+     R r0;
 
-     buf = (float *) MALLOC(sizeof(float) * npad, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * npad, BUFFERS);
 
      /* First, permute the input, storing in buf: */
-     g = ego->g;
+     g = ego->g; 
      for (gpower = 1, k = 0; k < n - 1; ++k, gpower = MULMOD(gpower, g, n)) {
 	  buf[k] = I[gpower * is];
      }
@@ -94,7 +112,7 @@ static void apply(const plan *ego_, float *I, float *O)
      /* Nyquist component: */
      A(k + k == npad); /* since npad is even */
      buf[k] *= omega[k];
-
+     
      /* this will add input[0] to all of the outputs after the ifft */
      buf[0] += r0;
 
@@ -133,32 +151,32 @@ static void apply(const plan *ego_, float *I, float *O)
 #endif
      A(gpower == 1);
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
-static float *mkomega(enum wakefulness wakefulness,
+static R *mkomega(enum wakefulness wakefulness,
 		  plan *p_, INT n, INT npad, INT ginv)
 {
      plan_rdft *p = (plan_rdft *) p_;
-     float *omega;
+     R *omega;
      INT i, gpower;
      trigreal scale;
      triggen *t;
 
-     if ((omega = fftwf_rader_tl_find(n, npad + 1, ginv, omegas)))
+     if ((omega = X(rader_tl_find)(n, npad + 1, ginv, omegas))) 
 	  return omega;
 
-     omega = (float *)MALLOC(sizeof(float) * npad, TWIDDLES);
+     omega = (R *)MALLOC(sizeof(R) * npad, TWIDDLES);
 
      scale = npad; /* normalization for convolution */
 
-     t = fftwf_mktriggen(wakefulness, n);
+     t = X(mktriggen)(wakefulness, n);
      for (i = 0, gpower = 1; i < n-1; ++i, gpower = MULMOD(gpower, ginv, n)) {
 	  trigreal w[2];
 	  t->cexpl(t, gpower, w);
 	  omega[i] = (w[0] + w[1]) / scale;
      }
-     fftwf_triggen_destroy(t);
+     X(triggen_destroy)(t);
      A(gpower == 1);
 
      A(npad == n - 1 || npad >= 2*(n - 1) - 1);
@@ -171,13 +189,13 @@ static float *mkomega(enum wakefulness wakefulness,
 
      p->apply(p_, omega, omega);
 
-     fftwf_rader_tl_insert(n, npad + 1, ginv, omega, &omegas);
+     X(rader_tl_insert)(n, npad + 1, ginv, omega, &omegas);
      return omega;
 }
 
-static void free_omega(float *omega)
+static void free_omega(R *omega)
 {
-     fftwf_rader_tl_delete(omega, &omegas);
+     X(rader_tl_delete)(omega, &omegas);
 }
 
 /***************************************************************************/
@@ -186,9 +204,9 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
 
-     fftwf_plan_awake(ego->cld1, wakefulness);
-     fftwf_plan_awake(ego->cld2, wakefulness);
-     fftwf_plan_awake(ego->cld_omega, wakefulness);
+     X(plan_awake)(ego->cld1, wakefulness);
+     X(plan_awake)(ego->cld2, wakefulness);
+     X(plan_awake)(ego->cld_omega, wakefulness);
 
      switch (wakefulness) {
 	 case SLEEPY:
@@ -196,8 +214,12 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 	      ego->omega = 0;
 	      break;
 	 default:
+	      ego->g = X(find_generator)(ego->n);
+	      ego->ginv = X(power_mod)(ego->g, ego->n - 2, ego->n);
+	      A(MULMOD(ego->g, ego->ginv, ego->n) == 1);
+
 	      A(!ego->omega);
-	      ego->omega = mkomega(wakefulness,
+	      ego->omega = mkomega(wakefulness, 
 				   ego->cld_omega,ego->n,ego->npad,ego->ginv);
 	      break;
      }
@@ -206,9 +228,9 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld_omega);
-     fftwf_plan_destroy_internal(ego->cld2);
-     fftwf_plan_destroy_internal(ego->cld1);
+     X(plan_destroy_internal)(ego->cld_omega);
+     X(plan_destroy_internal)(ego->cld2);
+     X(plan_destroy_internal)(ego->cld1);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -224,28 +246,29 @@ static void print(const plan *ego_, printer *p)
      p->putchr(p, ')');
 }
 
-static int applicable0(const problem *p_)
+static int applicable(const solver *ego, const problem *p_, const planner *plnr)
 {
      const problem_rdft *p = (const problem_rdft *) p_;
+     UNUSED(ego);
      return (1
 	     && p->sz->rnk == 1
 	     && p->vecsz->rnk == 0
 	     && p->kind[0] == DHT
-	     && fftwf_is_prime(p->sz->dims[0].n)
+	     && X(is_prime)(p->sz->dims[0].n)
 	     && p->sz->dims[0].n > 2
+	     && CIMPLIES(NO_SLOWP(plnr), p->sz->dims[0].n > RADER_MAX_SLOW)
+	     /* proclaim the solver SLOW if p-1 is not easily
+		factorizable.  Unlike in the complex case where
+		Bluestein can solve the problem, in the DHT case we
+		may have no other choice */
+	     && CIMPLIES(NO_SLOWP(plnr), X(factors_into_small_primes)(p->sz->dims[0].n - 1))
 	  );
-}
-
-static int applicable(const solver *ego, const problem *p, const planner *plnr)
-{
-     UNUSED(ego);
-     return (!NO_SLOWP(plnr) && applicable0(p));
 }
 
 static INT choose_transform_size(INT minsz)
 {
      static const INT primes[] = { 2, 3, 5, 0 };
-     while (!fftwf_factors_into(minsz, primes) || minsz % 2)
+     while (!X(factors_into)(minsz, primes) || minsz % 2)
 	  ++minsz;
      return minsz;
 }
@@ -260,11 +283,11 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      plan *cld1 = (plan *) 0;
      plan *cld2 = (plan *) 0;
      plan *cld_omega = (plan *) 0;
-     float *buf = (float *) 0;
+     R *buf = (R *) 0;
      problem *cldp;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr))
@@ -280,39 +303,41 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 	  npad = n - 1;
 
      /* initial allocation for the purpose of planning */
-     buf = (float *) MALLOC(sizeof(float) * npad, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * npad, BUFFERS);
 
-     cld1 = fftwf_mkplan_f_d(plnr,fftwf_mkproblem_rdft_1_d(fftwf_mktensor_1d(npad, 1, 1),
-						fftwf_mktensor_1d(1, 0, 0),
+     cld1 = X(mkplan_f_d)(plnr, 
+			  X(mkproblem_rdft_1_d)(X(mktensor_1d)(npad, 1, 1),
+						X(mktensor_1d)(1, 0, 0),
 						buf, buf,
-						R2HC),  NO_SLOW, 0, 0);
+						R2HC),
+			  NO_SLOW, 0, 0);
      if (!cld1) goto nada;
 
      cldp =
-          fftwf_mkproblem_rdft_1_d(
-               fftwf_mktensor_1d(npad, 1, 1),
-               fftwf_mktensor_1d(1, 0, 0),
-	       buf, buf,
+          X(mkproblem_rdft_1_d)(
+               X(mktensor_1d)(npad, 1, 1),
+               X(mktensor_1d)(1, 0, 0),
+	       buf, buf, 
 #if R2HC_ONLY_CONV
 	       R2HC
 #else
 	       HC2R
 #endif
 	       );
-     if (!(cld2 = fftwf_mkplan_f_d(plnr, cldp, NO_SLOW, 0, 0)))
+     if (!(cld2 = X(mkplan_f_d)(plnr, cldp, NO_SLOW, 0, 0)))
 	  goto nada;
 
      /* plan for omega */
-     cld_omega = fftwf_mkplan_f_d(plnr,
-			       fftwf_mkproblem_rdft_1_d(
-				    fftwf_mktensor_1d(npad, 1, 1),
-				    fftwf_mktensor_1d(1, 0, 0),
+     cld_omega = X(mkplan_f_d)(plnr, 
+			       X(mkproblem_rdft_1_d)(
+				    X(mktensor_1d)(npad, 1, 1),
+				    X(mktensor_1d)(1, 0, 0),
 				    buf, buf, R2HC),
 			       NO_SLOW, ESTIMATE, 0);
      if (!cld_omega) goto nada;
 
      /* deallocate buffers; let awake() or apply() allocate them for real */
-     fftwf_ifree(buf);
+     X(ifree)(buf);
      buf = 0;
 
      pln = MKPLAN_RDFT(P, &padt, apply);
@@ -324,11 +349,8 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->npad = npad;
      pln->is = is;
      pln->os = os;
-     pln->g = fftwf_find_generator(n);
-     pln->ginv = fftwf_power_mod(pln->g, n - 2, n);
-     A(MULMOD(pln->g, pln->ginv, n) == 1);
 
-     fftwf_ops_add(&cld1->ops, &cld2->ops, &pln->super.super.ops);
+     X(ops_add)(&cld1->ops, &cld2->ops, &pln->super.super.ops);
      pln->super.super.ops.other += (npad/2-1)*6 + npad + n + (n-1) * ego->pad;
      pln->super.super.ops.add += (npad/2-1)*2 + 2 + (n-1) * ego->pad;
      pln->super.super.ops.mul += (npad/2-1)*4 + 2 + ego->pad;
@@ -340,10 +362,10 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      return &(pln->super.super);
 
  nada:
-     fftwf_ifree0(buf);
-     fftwf_plan_destroy_internal(cld_omega);
-     fftwf_plan_destroy_internal(cld2);
-     fftwf_plan_destroy_internal(cld1);
+     X(ifree0)(buf);
+     X(plan_destroy_internal)(cld_omega);
+     X(plan_destroy_internal)(cld2);
+     X(plan_destroy_internal)(cld1);
      return 0;
 }
 
@@ -357,7 +379,7 @@ static solver *mksolver(int pad)
      return &(slv->super);
 }
 
-void fftwf_dht_rader_register(planner *p)
+void X(dht_rader_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver(0));
      REGISTER_SOLVER(p, mksolver(1));

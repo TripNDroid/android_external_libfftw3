@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -29,11 +29,11 @@ static int signof(INT x)
 }
 
 /* total order among iodim's */
-int fftwf_dimcmp(const iodim *a, const iodim *b)
+int X(dimcmp)(const iodim *a, const iodim *b)
 {
-     INT sai = fftwf_iabs(a->is), sbi = fftwf_iabs(b->is);
-     INT sao = fftwf_iabs(a->os), sbo = fftwf_iabs(b->os);
-     INT sam = fftwf_imin(sai, sao), sbm = fftwf_imin(sbi, sbo);
+     INT sai = X(iabs)(a->is), sbi = X(iabs)(b->is);
+     INT sao = X(iabs)(a->os), sbo = X(iabs)(b->os);
+     INT sam = X(imin)(sai, sao), sbm = X(imin)(sbi, sbo);
 
      /* in descending order of min{istride, ostride} */
      if (sam != sbm)
@@ -51,23 +51,23 @@ int fftwf_dimcmp(const iodim *a, const iodim *b)
      return signof(a->n - b->n);
 }
 
+static void canonicalize(tensor *x)
+{
+     if (x->rnk > 1) {
+	  qsort(x->dims, (size_t)x->rnk, sizeof(iodim),
+		(int (*)(const void *, const void *))X(dimcmp));
+     }
+}
 
+static int compare_by_istride(const iodim *a, const iodim *b)
+{
+     INT sai = X(iabs)(a->is), sbi = X(iabs)(b->is);
 
-/* Like tensor_copy, but eliminate n == 1 dimensions, which
-   never affect any transform or transform vector.
+     /* in descending order of istride */
+     return signof(sbi - sai);
+}
 
-   Also, we sort the tensor into a canonical order of decreasing
-   is.  In general, processing a loop/array in order of
-   decreasing stride will improve locality; sorting also makes the
-   analysis in fftw_tensor_contiguous (below) easier.  The choice
-   of is over os is mostly arbitrary, and hopefully
-   shouldn't affect things much.  Normally, either the os will be
-   in the same order as is (for e.g. multi-dimensional
-   transforms) or will be in opposite order (e.g. for Cooley-Tukey
-   recursion).  (Both forward and backwards traversal of the tensor
-   are considered e.g. by vrank-geq1, so sorting in increasing
-   vs. decreasing order is not really important.) */
-tensor *fftwf_tensor_compress(const tensor *sz)
+static tensor *really_compress(const tensor *sz)
 {
      int i, rnk;
      tensor *x;
@@ -79,17 +79,27 @@ tensor *fftwf_tensor_compress(const tensor *sz)
                ++rnk;
      }
 
-     x = fftwf_mktensor(rnk);
+     x = X(mktensor)(rnk);
      for (i = rnk = 0; i < sz->rnk; ++i) {
           if (sz->dims[i].n != 1)
                x->dims[rnk++] = sz->dims[i];
      }
+     return x;
+}
 
-     if (rnk > 1) {
-	  qsort(x->dims, (size_t)x->rnk, sizeof(iodim),
-		(int (*)(const void *, const void *))fftwf_dimcmp);
-     }
-
+/* Like tensor_copy, but eliminate n == 1 dimensions, which
+   never affect any transform or transform vector.
+ 
+   Also, we sort the tensor into a canonical order of decreasing
+   strides (see X(dimcmp) for an exact definition).  In general,
+   processing a loop/array in order of decreasing stride will improve
+   locality.  Both forward and backwards traversal of the tensor are
+   considered e.g. by vrank-geq1, so sorting in increasing
+   vs. decreasing order is not really important. */
+tensor *X(tensor_compress)(const tensor *sz)
+{
+     tensor *x = really_compress(sz);
+     canonicalize(x);
      return x;
 }
 
@@ -103,25 +113,40 @@ static int strides_contig(iodim *a, iodim *b)
 /* Like tensor_compress, but also compress into one dimension any
    group of dimensions that form a contiguous block of indices with
    some stride.  (This can safely be done for transform vector sizes.) */
-tensor *fftwf_tensor_compress_contiguous(const tensor *sz)
+tensor *X(tensor_compress_contiguous)(const tensor *sz)
 {
      int i, rnk;
      tensor *sz2, *x;
 
-     if (fftwf_tensor_sz(sz) == 0)
-	  return fftwf_mktensor(RNK_MINFTY);
+     if (X(tensor_sz)(sz) == 0) 
+	  return X(mktensor)(RNK_MINFTY);
 
-     sz2 = fftwf_tensor_compress(sz);
+     sz2 = really_compress(sz);
      A(FINITE_RNK(sz2->rnk));
 
-     if (sz2->rnk < 2)		/* nothing to compress */
+     if (sz2->rnk <= 1) { /* nothing to compress. */ 
+	  if (0) {
+	       /* this call is redundant, because "sz->rnk <= 1" implies
+		  that the tensor is already canonical, but I am writing
+		  it explicitly because "logically" we need to canonicalize
+		  the tensor before returning. */
+	       canonicalize(sz2);
+	  }
           return sz2;
+     }
 
+     /* sort in descending order of |istride|, so that compressible
+	dimensions appear contigously */
+     qsort(sz2->dims, (size_t)sz2->rnk, sizeof(iodim),
+		(int (*)(const void *, const void *))compare_by_istride);
+
+     /* compute what the rank will be after compression */
      for (i = rnk = 1; i < sz2->rnk; ++i)
           if (!strides_contig(sz2->dims + i - 1, sz2->dims + i))
                ++rnk;
 
-     x = fftwf_mktensor(rnk);
+     /* merge adjacent dimensions whenever possible */
+     x = X(mktensor)(rnk);
      x->dims[0] = sz2->dims[0];
      for (i = rnk = 1; i < sz2->rnk; ++i) {
           if (strides_contig(sz2->dims + i - 1, sz2->dims + i)) {
@@ -134,29 +159,32 @@ tensor *fftwf_tensor_compress_contiguous(const tensor *sz)
           }
      }
 
-     fftwf_tensor_destroy(sz2);
+     X(tensor_destroy)(sz2);
+
+     /* reduce to canonical form */
+     canonicalize(x);
      return x;
 }
 
-/* The inverse of fftwf_tensor_append): splits the sz tensor into
+/* The inverse of X(tensor_append): splits the sz tensor into
    tensor a followed by tensor b, where a's rank is arnk. */
-void fftwf_tensor_split(const tensor *sz, tensor **a, int arnk, tensor **b)
+void X(tensor_split)(const tensor *sz, tensor **a, int arnk, tensor **b)
 {
      A(FINITE_RNK(sz->rnk) && FINITE_RNK(arnk));
 
-     *a = fftwf_tensor_copy_sub(sz, 0, arnk);
-     *b = fftwf_tensor_copy_sub(sz, arnk, sz->rnk - arnk);
+     *a = X(tensor_copy_sub)(sz, 0, arnk);
+     *b = X(tensor_copy_sub)(sz, arnk, sz->rnk - arnk);
 }
 
 /* TRUE if the two tensors are equal */
-int fftwf_tensor_equal(const tensor *a, const tensor *b)
+int X(tensor_equal)(const tensor *a, const tensor *b)
 {
      if (a->rnk != b->rnk)
 	  return 0;
 
      if (FINITE_RNK(a->rnk)) {
 	  int i;
-	  for (i = 0; i < a->rnk; ++i)
+	  for (i = 0; i < a->rnk; ++i) 
 	       if (0
 		   || a->dims[i].n != b->dims[i].n
 		   || a->dims[i].is != b->dims[i].is
@@ -170,18 +198,18 @@ int fftwf_tensor_equal(const tensor *a, const tensor *b)
 
 /* TRUE if the sets of input and output locations described by
    (append sz vecsz) are the same */
-int fftwf_tensor_inplace_locations(const tensor *sz, const tensor *vecsz)
+int X(tensor_inplace_locations)(const tensor *sz, const tensor *vecsz)
 {
-     tensor *t = fftwf_tensor_append(sz, vecsz);
-     tensor *ti = fftwf_tensor_copy_inplace(t, INPLACE_IS);
-     tensor *to = fftwf_tensor_copy_inplace(t, INPLACE_OS);
-     tensor *tic = fftwf_tensor_compress_contiguous(ti);
-     tensor *toc = fftwf_tensor_compress_contiguous(to);
+     tensor *t = X(tensor_append)(sz, vecsz);
+     tensor *ti = X(tensor_copy_inplace)(t, INPLACE_IS);
+     tensor *to = X(tensor_copy_inplace)(t, INPLACE_OS);
+     tensor *tic = X(tensor_compress_contiguous)(ti);
+     tensor *toc = X(tensor_compress_contiguous)(to);
 
-     int retval = fftwf_tensor_equal(tic, toc);
+     int retval = X(tensor_equal)(tic, toc);
 
-     fftwf_tensor_destroy(t);
-     fftwf_tensor_destroy4(ti, to, tic, toc);
+     X(tensor_destroy)(t);
+     X(tensor_destroy4)(ti, to, tic, toc);
 
      return retval;
 }

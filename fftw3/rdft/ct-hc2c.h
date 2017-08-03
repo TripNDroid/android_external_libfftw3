@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,19 +14,19 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
 #include "rdft.h"
 
-typedef void (*hc2capply) (const plan *ego, float *cr, float *ci);
+typedef void (*hc2capply) (const plan *ego, R *cr, R *ci);
 typedef struct hc2c_solver_s hc2c_solver;
 typedef plan *(*hc2c_mkinferior)(const hc2c_solver *ego, rdft_kind kind,
 				 INT r, INT rs,
-				 INT m, INT ms,
+				 INT m, INT ms, 
 				 INT v, INT vs,
-				 float *cr, float *ci,
+				 R *cr, R *ci,
 				 planner *plnr);
 
 typedef struct {
@@ -34,11 +34,11 @@ typedef struct {
      hc2capply apply;
 } plan_hc2c;
 
-extern plan *fftwf_mkplan_hc2c(size_t size, const plan_adt *adt,
+extern plan *X(mkplan_hc2c)(size_t size, const plan_adt *adt, 
 			    hc2capply apply);
 
 #define MKPLAN_HC2C(type, adt, apply) \
-  (type *)fftwf_mkplan_hc2c(sizeof(type), adt, apply)
+  (type *)X(mkplan_hc2c)(sizeof(type), adt, apply)
 
 struct hc2c_solver_s {
      solver super;
@@ -48,10 +48,10 @@ struct hc2c_solver_s {
      hc2c_kind hc2ckind;
 };
 
-hc2c_solver *fftwf_mksolver_hc2c(size_t size, INT r,
+hc2c_solver *X(mksolver_hc2c)(size_t size, INT r,
 			      hc2c_kind hc2ckind,
 			      hc2c_mkinferior mkcldw);
 
-void fftwf_regsolver_hc2c_direct(planner *plnr, khc2c codelet,
+void X(regsolver_hc2c_direct)(planner *plnr, khc2c codelet, 
 			      const hc2c_desc *desc,
 			      hc2c_kind hc2ckind);

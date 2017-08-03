@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
 #include "ifftw.h"
 
 /***************************************************************************/
@@ -12,17 +33,17 @@
    e.g. using 'long long' arithmetic.  However, it has the advantage
    of working when INT is 64 bits, and is also faster when overflow is
    rare.  FFTW calls this via the MULMOD macro, which further
-   optimizes for the case of small integers.
+   optimizes for the case of small integers. 
 */
 
 #define ADD_MOD(x, y, p) ((x) >= (p) - (y)) ? ((x) + ((y) - (p))) : ((x) + (y))
 
-INT fftwf_safe_mulmod(INT x, INT y, INT p)
+INT X(safe_mulmod)(INT x, INT y, INT p)
 {
      INT r;
 
-     if (y > x)
-	  return fftwf_safe_mulmod(y, x, p);
+     if (y > x) 
+	  return X(safe_mulmod)(y, x, p);
 
      A(0 <= y && x < p);
 
@@ -40,17 +61,17 @@ INT fftwf_safe_mulmod(INT x, INT y, INT p)
 /* Compute n^m mod p, where m >= 0 and p > 0.  If we really cared, we
    could make this tail-recursive. */
 
-INT fftwf_power_mod(INT n, INT m, INT p)
+INT X(power_mod)(INT n, INT m, INT p)
 {
      A(p > 0);
      if (m == 0)
 	  return 1;
      else if (m % 2 == 0) {
-	  INT x = fftwf_power_mod(n, m / 2, p);
+	  INT x = X(power_mod)(n, m / 2, p);
 	  return MULMOD(x, x, p);
      }
      else
-	  return MULMOD(n, fftwf_power_mod(n, m - 1, p), p);
+	  return MULMOD(n, X(power_mod)(n, m - 1, p), p);
 }
 
 /* the following two routines were contributed by Greg Dionne. */
@@ -81,7 +102,7 @@ static INT get_prime_factors(INT n, INT *primef)
      return size;
 }
 
-INT fftwf_find_generator(INT p)
+INT X(find_generator)(INT p)
 {
     INT n, i, size;
     INT primef[16];     /* smallest number = 32589158477190044730 > 2^64 */
@@ -93,7 +114,7 @@ INT fftwf_find_generator(INT p)
     size = get_prime_factors(pm1, primef);
     n = 2;
     for (i = 0; i < size; i++)
-        if (fftwf_power_mod(n, pm1 / primef[i], p) == 1) {
+        if (X(power_mod)(n, pm1 / primef[i], p) == 1) {
             i = -1;
             n++;
         }
@@ -102,7 +123,7 @@ INT fftwf_find_generator(INT p)
 
 /* Return first prime divisor of n  (It would be at best slightly faster to
    search a static table of primes; there are 6542 primes < 2^16.)  */
-INT fftwf_first_divisor(INT n)
+INT X(first_divisor)(INT n)
 {
      INT i;
      if (n <= 1)
@@ -115,27 +136,27 @@ INT fftwf_first_divisor(INT n)
      return n;
 }
 
-int fftwf_is_prime(INT n)
+int X(is_prime)(INT n)
 {
-     return(n > 1 && fftwf_first_divisor(n) == n);
+     return(n > 1 && X(first_divisor)(n) == n);
 }
 
-INT fftwf_next_prime(INT n)
+INT X(next_prime)(INT n)
 {
-     while (!fftwf_is_prime(n)) ++n;
+     while (!X(is_prime)(n)) ++n;
      return n;
 }
 
-int fftwf_factors_into(INT n, const INT *primes)
+int X(factors_into)(INT n, const INT *primes)
 {
-     for (; *primes != 0; ++primes)
-	  while ((n % *primes) == 0)
+     for (; *primes != 0; ++primes) 
+	  while ((n % *primes) == 0) 
 	       n /= *primes;
      return (n == 1);
 }
 
 /* integer square root.  Return floor(sqrt(N)) */
-INT fftwf_isqrt(INT n)
+INT X(isqrt)(INT n)
 {
      INT guess, iguess;
 
@@ -154,18 +175,18 @@ INT fftwf_isqrt(INT n)
 
 static INT isqrt_maybe(INT n)
 {
-     INT guess = fftwf_isqrt(n);
+     INT guess = X(isqrt)(n);
      return guess * guess == n ? guess : 0;
 }
 
 #define divides(a, b) (((b) % (a)) == 0)
-INT fftwf_choose_radix(INT r, INT n)
+INT X(choose_radix)(INT r, INT n)
 {
      if (r > 0) {
 	  if (divides(r, n)) return r;
 	  return 0;
      } else if (r == 0) {
-	  return fftwf_first_divisor(n);
+	  return X(first_divisor)(n);
      } else {
 	  /* r is negative.  If n = (-r) * q^2, take q as the radix */
 	  r = 0 - r;
@@ -174,7 +195,7 @@ INT fftwf_choose_radix(INT r, INT n)
 }
 
 /* return A mod N, works for all A including A < 0 */
-INT fftwf_modulo(INT a, INT n)
+INT X(modulo)(INT a, INT n)
 {
      A(n > 0);
      if (a >= 0)
@@ -183,3 +204,9 @@ INT fftwf_modulo(INT a, INT n)
 	  return (n - 1) - ((-(a + (INT)1)) % n);
 }
 
+/* TRUE if N factors into small primes */
+int X(factors_into_small_primes)(INT n)
+{
+     static const INT primes[] = { 2, 3, 5, 0 };
+     return X(factors_into)(n, primes);
+}

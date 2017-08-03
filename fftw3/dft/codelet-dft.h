@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -27,7 +27,7 @@
 #ifndef __DFT_CODELET_H__
 #define __DFT_CODELET_H__
 
-#include "../kernel/ifftw.h"
+#include "ifftw.h"
 
 /**************************************************************
  * types of codelets
@@ -39,7 +39,7 @@ typedef struct kdft_desc_s kdft_desc;
 typedef struct {
      int (*okp)(
 	  const kdft_desc *desc,
-	  const float *ri, const float *ii, const float *ro, const float *io,
+	  const R *ri, const R *ii, const R *ro, const R *io,
 	  INT is, INT os, INT vl, INT ivs, INT ovs,
 	  const planner *plnr);
      INT vl;
@@ -56,9 +56,9 @@ struct kdft_desc_s {
      INT ovs;
 };
 
-typedef void (*kdft) (const float *ri, const float *ii, float *ro, float *io,
+typedef void (*kdft) (const R *ri, const R *ii, R *ro, R *io,
                       stride is, stride os, INT vl, INT ivs, INT ovs);
-void fftwf_kdft_register(planner *p, kdft codelet, const kdft_desc *desc);
+void X(kdft_register)(planner *p, kdft codelet, const kdft_desc *desc);
 
 
 typedef struct ct_desc_s ct_desc;
@@ -66,7 +66,7 @@ typedef struct ct_desc_s ct_desc;
 typedef struct {
      int (*okp)(
 	  const struct ct_desc_s *desc,
-	  const float *rio, const float *iio,
+	  const R *rio, const R *iio, 
 	  INT rs, INT vs, INT m, INT mb, INT me, INT ms,
 	  const planner *plnr);
      INT vl;
@@ -83,22 +83,22 @@ struct ct_desc_s {
      INT ms;
 };
 
-typedef void (*kdftw) (float *rioarray, float *iioarray, const float *W,
+typedef void (*kdftw) (R *rioarray, R *iioarray, const R *W,
 		       stride ios, INT mb, INT me, INT ms);
-void fftwf_kdft_dit_register(planner *p, kdftw codelet, const ct_desc *desc);
-void fftwf_kdft_dif_register(planner *p, kdftw codelet, const ct_desc *desc);
+void X(kdft_dit_register)(planner *p, kdftw codelet, const ct_desc *desc);
+void X(kdft_dif_register)(planner *p, kdftw codelet, const ct_desc *desc);
 
 
-typedef void (*kdftwsq) (float *rioarray, float *iioarray,
-			 const float *W, stride is, stride vs,
+typedef void (*kdftwsq) (R *rioarray, R *iioarray,
+			 const R *W, stride is, stride vs,
 			 INT mb, INT me, INT ms);
-void fftwf_kdft_difsq_register(planner *p, kdftwsq codelet, const ct_desc *desc);
+void X(kdft_difsq_register)(planner *p, kdftwsq codelet, const ct_desc *desc);
 
 
-extern const solvtab fftwf_solvtab_dft_standard;
-
-#if HAVE_SIMD
-extern const solvtab fftwf_solvtab_dft_simd;
-#endif
+extern const solvtab X(solvtab_dft_standard);
+extern const solvtab X(solvtab_dft_sse2);
+extern const solvtab X(solvtab_dft_avx);
+extern const solvtab X(solvtab_dft_altivec);
+extern const solvtab X(solvtab_dft_neon);
 
 #endif				/* __DFT_CODELET_H__ */

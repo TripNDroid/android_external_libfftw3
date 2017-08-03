@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -39,23 +39,23 @@ typedef struct {
      const S *slv;
 } P;
 
-static void dobatch(const P *ego, float *ri, float *ii, float *ro, float *io,
-		    float *buf, INT batchsz)
+static void dobatch(const P *ego, R *ri, R *ii, R *ro, R *io, 
+		    R *buf, INT batchsz)
 {
-     fftwf_cpy2d_pair_ci(ri, ii, buf, buf+1,
+     X(cpy2d_pair_ci)(ri, ii, buf, buf+1,
 		      ego->n, WS(ego->is, 1), WS(ego->bufstride, 1),
 		      batchsz, ego->ivs, 2);
-
+     
      if (IABS(WS(ego->os, 1)) < IABS(ego->ovs)) {
 	  /* transform directly to output */
-	  ego->k(buf, buf+1, ro, io,
+	  ego->k(buf, buf+1, ro, io, 
 		 ego->bufstride, ego->os, batchsz, 2, ego->ovs);
      } else {
 	  /* transform to buffer and copy back */
-	  ego->k(buf, buf+1, buf, buf+1,
+	  ego->k(buf, buf+1, buf, buf+1, 
 		 ego->bufstride, ego->bufstride, batchsz, 2, 2);
-	  fftwf_cpy2d_pair_co(buf, buf+1, ro, io,
-			   ego->n, WS(ego->bufstride, 1), WS(ego->os, 1),
+	  X(cpy2d_pair_co)(buf, buf+1, ro, io,
+			   ego->n, WS(ego->bufstride, 1), WS(ego->os, 1), 
 			   batchsz, 2, ego->ovs);
      }
 }
@@ -69,14 +69,15 @@ static INT compute_batchsize(INT n)
      return (n + 2);
 }
 
-static void apply_buf(const plan *ego_, float *ri, float *ii, float *ro, float *io)
+static void apply_buf(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      const P *ego = (const P *) ego_;
-     float *buf;
+     R *buf;
      INT vl = ego->vl, n = ego->n, batchsz = compute_batchsize(n);
      INT i;
+     size_t bufsz = n * batchsz * 2 * sizeof(R);
 
-     STACK_MALLOC(float *, buf, n * batchsz * 2 * sizeof(float));
+     BUF_ALLOC(R *, buf, bufsz);
 
      for (i = 0; i < vl - batchsz; i += batchsz) {
 	  dobatch(ego, ri, ii, ro, io, buf, batchsz);
@@ -85,17 +86,17 @@ static void apply_buf(const plan *ego_, float *ri, float *ii, float *ro, float *
      }
      dobatch(ego, ri, ii, ro, io, buf, vl - i);
 
-     STACK_FREE(buf);
+     BUF_FREE(buf, bufsz);
 }
 
-static void apply(const plan *ego_, float *ri, float *ii, float *ro, float *io)
+static void apply(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      const P *ego = (const P *) ego_;
      ASSERT_ALIGNED_DOUBLE;
      ego->k(ri, ii, ro, io, ego->is, ego->os, ego->vl, ego->ivs, ego->ovs);
 }
 
-static void apply_extra_iter(const plan *ego_, float *ri, float *ii, float *ro, float *io)
+static void apply_extra_iter(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      const P *ego = (const P *) ego_;
      INT vl = ego->vl;
@@ -115,9 +116,9 @@ static void apply_extra_iter(const plan *ego_, float *ri, float *ii, float *ro, 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_stride_destroy(ego->is);
-     fftwf_stride_destroy(ego->os);
-     fftwf_stride_destroy(ego->bufstride);
+     X(stride_destroy)(ego->is);
+     X(stride_destroy)(ego->os);
+     X(stride_destroy)(ego->bufstride);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -127,7 +128,7 @@ static void print(const plan *ego_, printer *p)
      const kdft_desc *d = s->desc;
 
      if (ego->slv->bufferedp)
-	  p->print(p, "(dft-directbuf/%D-%D%v \"%s\")",
+	  p->print(p, "(dft-directbuf/%D-%D%v \"%s\")", 
 		   compute_batchsize(d->sz), d->sz, ego->vl, d->nam);
      else
 	  p->print(p, "(dft-direct-%D%v \"%s\")", d->sz, ego->vl, d->nam);
@@ -150,17 +151,17 @@ static int applicable_buf(const solver *ego_, const problem *p_,
 	  && p->sz->dims[0].n == d->sz
 
 	  /* check strides etc */
-	  && fftwf_tensor_tornk1(p->vecsz, &vl, &ivs, &ovs)
+	  && X(tensor_tornk1)(p->vecsz, &vl, &ivs, &ovs)
 
 	  /* UGLY if IS <= IVS */
 	  && !(NO_UGLYP(plnr) &&
-	       fftwf_iabs(p->sz->dims[0].is) <= fftwf_iabs(ivs))
+	       X(iabs)(p->sz->dims[0].is) <= X(iabs)(ivs))
 
 	  && (batchsz = compute_batchsize(d->sz), 1)
-	  && (d->genus->okp(d, 0, ((const float *)0) + 1, p->ro, p->io,
+	  && (d->genus->okp(d, 0, ((const R *)0) + 1, p->ro, p->io,
 			    2 * batchsz, p->sz->dims[0].os,
 			    batchsz, 2, ovs, plnr))
-	  && (d->genus->okp(d, 0, ((const float *)0) + 1, p->ro, p->io,
+	  && (d->genus->okp(d, 0, ((const R *)0) + 1, p->ro, p->io,
 			    2 * batchsz, p->sz->dims[0].os,
 			    vl % batchsz, 2, ovs, plnr))
 
@@ -170,7 +171,7 @@ static int applicable_buf(const solver *ego_, const problem *p_,
 	      || p->ri != p->ro
 
 	      /* can operate in-place as long as strides are the same */
-	      || fftwf_tensor_inplace_strides2(p->sz, p->vecsz)
+	      || X(tensor_inplace_strides2)(p->sz, p->vecsz)
 
 	      /* can do it if the problem fits in the buffer, no matter
 		 what the strides are */
@@ -195,7 +196,7 @@ static int applicable(const solver *ego_, const problem *p_,
 	  && p->sz->dims[0].n == d->sz
 
 	  /* check strides etc */
-	  && fftwf_tensor_tornk1(p->vecsz, &vl, &ivs, &ovs)
+	  && X(tensor_tornk1)(p->vecsz, &vl, &ivs, &ovs)
 
 	  && ((*extra_iterp = 0,
 	       (d->genus->okp(d, p->ri, p->ii, p->ro, p->io,
@@ -219,7 +220,7 @@ static int applicable(const solver *ego_, const problem *p_,
 	      || vl == 1
 
 	      /* can operate in-place as long as strides are the same */
-	      || fftwf_tensor_inplace_strides2(p->sz, p->vecsz)
+	      || X(tensor_inplace_strides2)(p->sz, p->vecsz)
 	       )
 	  );
 }
@@ -234,7 +235,7 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      const kdft_desc *e = ego->desc;
 
      static const plan_adt padt = {
-	  fftwf_dft_solve, fftwf_null_awake, print, destroy
+	  X(dft_solve), X(null_awake), print, destroy
      };
 
      UNUSED(plnr);
@@ -254,17 +255,17 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      d = p->sz->dims;
      pln->k = ego->k;
      pln->n = d[0].n;
-     pln->is = fftwf_mkstride(pln->n, d[0].is);
-     pln->os = fftwf_mkstride(pln->n, d[0].os);
-     pln->bufstride = fftwf_mkstride(pln->n, 2 * compute_batchsize(pln->n));
+     pln->is = X(mkstride)(pln->n, d[0].is);
+     pln->os = X(mkstride)(pln->n, d[0].os);
+     pln->bufstride = X(mkstride)(pln->n, 2 * compute_batchsize(pln->n));
 
-     fftwf_tensor_tornk1(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
+     X(tensor_tornk1)(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
      pln->slv = ego;
 
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl / e->genus->vl, &e->ops, &pln->super.super.ops);
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(pln->vl / e->genus->vl, &e->ops, &pln->super.super.ops);
 
-     if (ego->bufferedp)
+     if (ego->bufferedp) 
 	  pln->super.super.ops.other += 4 * pln->n * pln->vl;
 
      pln->super.super.could_prune_now_p = !ego->bufferedp;
@@ -281,12 +282,12 @@ static solver *mksolver(kdft k, const kdft_desc *desc, int bufferedp)
      return &(slv->super);
 }
 
-solver *fftwf_mksolver_dft_direct(kdft k, const kdft_desc *desc)
+solver *X(mksolver_dft_direct)(kdft k, const kdft_desc *desc)
 {
      return mksolver(k, desc, 0);
 }
 
-solver *fftwf_mksolver_dft_directbuf(kdft k, const kdft_desc *desc)
+solver *X(mksolver_dft_directbuf)(kdft k, const kdft_desc *desc)
 {
      return mksolver(k, desc, 1);
 }

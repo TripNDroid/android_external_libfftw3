@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -56,18 +56,18 @@ typedef struct {
      rdft_kind kind;
 } P;
 
-static void apply_re11(const plan *ego_, float *I, float *O)
+static void apply_re11(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, n = ego->n, n2 = n/2;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W = ego->td->W;
-     float *W2;
-     float *buf;
+     R *W = ego->td->W;
+     R *W2;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  buf[0] = K(2.0) * I[0];
@@ -180,7 +180,7 @@ static void apply_re11(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 #if 0
@@ -190,17 +190,17 @@ static void apply_re11(const plan *ego_, float *I, float *O)
    (it is simpler) and because it may become more efficient if we
    ever implement REDFT01 codelets. */
 
-static void apply_re11(const plan *ego_, float *I, float *O)
+static void apply_re11(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, n = ego->n;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W;
-     float *buf;
+     R *W;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  buf[0] = K(2.0) * I[0];
@@ -257,25 +257,25 @@ static void apply_re11(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 #endif /* 0 */
 
 /* like for rodft01, rodft11 is obtained from redft11 by
    reversing the input and flipping the sign of every other output. */
-static void apply_ro11(const plan *ego_, float *I, float *O)
+static void apply_ro11(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, n = ego->n, n2 = n/2;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W = ego->td->W;
-     float *W2;
-     float *buf;
+     R *W = ego->td->W;
+     R *W2;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  buf[0] = K(2.0) * I[is * (n - 1)];
@@ -388,7 +388,7 @@ static void apply_ro11(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 static void awake(plan *ego_, enum wakefulness wakefulness)
@@ -405,25 +405,25 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
           { TW_NEXT, 2, 0 }
      };
 
-     fftwf_plan_awake(ego->cld, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
 
-     fftwf_twiddle_awake(wakefulness, &ego->td, reodft010e_tw, 
+     X(twiddle_awake)(wakefulness, &ego->td, reodft010e_tw, 
 		      2*ego->n, 1, ego->n/4+1);
-     fftwf_twiddle_awake(wakefulness, &ego->td2, reodft11e_tw, 
+     X(twiddle_awake)(wakefulness, &ego->td2, reodft11e_tw, 
 		      8*ego->n, 1, ego->n);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld);
+     X(plan_destroy_internal)(ego->cld);
 }
 
 static void print(const plan *ego_, printer *p)
 {
      const P *ego = (const P *) ego_;
      p->print(p, "(%se-radix2-r2hc-%D%v%(%p%))",
-	      fftwf_rdft_kind_str(ego->kind), ego->n, ego->vl, ego->cld);
+	      X(rdft_kind_str)(ego->kind), ego->n, ego->vl, ego->cld);
 }
 
 static int applicable0(const solver *ego_, const problem *p_)
@@ -449,12 +449,12 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      P *pln;
      const problem_rdft *p;
      plan *cld;
-     float *buf;
+     R *buf;
      INT n;
      opcnt ops;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr))
@@ -463,12 +463,12 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      p = (const problem_rdft *) p_;
 
      n = p->sz->dims[0].n;
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
-     cld = fftwf_mkplan_d(plnr, fftwf_mkproblem_rdft_1_d(fftwf_mktensor_1d(n/2, 1, 1),
-                                                   fftwf_mktensor_1d(2, n/2, n/2),
+     cld = X(mkplan_d)(plnr, X(mkproblem_rdft_1_d)(X(mktensor_1d)(n/2, 1, 1),
+                                                   X(mktensor_1d)(2, n/2, n/2),
                                                    buf, buf, R2HC));
-     fftwf_ifree(buf);
+     X(ifree)(buf);
      if (!cld)
           return (plan *)0;
 
@@ -480,9 +480,9 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->td = pln->td2 = 0;
      pln->kind = p->kind[0];
      
-     fftwf_tensor_tornk1(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
+     X(tensor_tornk1)(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
      
-     fftwf_ops_zero(&ops);
+     X(ops_zero)(&ops);
      ops.add = 2 + (n/2 - 1)/2 * 20;
      ops.mul = 6 + (n/2 - 1)/2 * 16;
      ops.other = 4*n + 2 + (n/2 - 1)/2 * 6;
@@ -492,9 +492,9 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 	  ops.other += 4;
      }
 
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &ops, &pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &cld->ops, &pln->super.super.ops);
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &ops, &pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &cld->ops, &pln->super.super.ops);
 
      return &(pln->super.super);
 }
@@ -507,7 +507,7 @@ static solver *mksolver(void)
      return &(slv->super);
 }
 
-void fftwf_reodft11e_radix2_r2hc_register(planner *p)
+void X(reodft11e_radix2_r2hc_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }

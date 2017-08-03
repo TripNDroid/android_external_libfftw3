@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -81,17 +81,17 @@ typedef struct {
    and post-processing passes.
 */
 
-static void apply_re01(const plan *ego_, float *I, float *O)
+static void apply_re01(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, n = ego->n;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W = ego->td->W;
-     float *buf;
+     R *W = ego->td->W;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  buf[0] = I[0];
@@ -130,22 +130,22 @@ static void apply_re01(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 /* ro01 is same as re01, but with i <-> n - 1 - i in the input and
    the sign of the odd output elements flipped. */
-static void apply_ro01(const plan *ego_, float *I, float *O)
+static void apply_ro01(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, n = ego->n;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W = ego->td->W;
-     float *buf;
+     R *W = ego->td->W;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  buf[0] = I[is * (n - 1)];
@@ -184,20 +184,20 @@ static void apply_ro01(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
-static void apply_re10(const plan *ego_, float *I, float *O)
+static void apply_re10(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, n = ego->n;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W = ego->td->W;
-     float *buf;
+     R *W = ego->td->W;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  buf[0] = I[0];
@@ -233,22 +233,22 @@ static void apply_re10(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 /* ro10 is same as re10, but with i <-> n - 1 - i in the output and
    the sign of the odd input elements flipped. */
-static void apply_ro10(const plan *ego_, float *I, float *O)
+static void apply_ro10(const plan *ego_, R *I, R *O)
 {
      const P *ego = (const P *) ego_;
      INT is = ego->is, os = ego->os;
      INT i, n = ego->n;
      INT iv, vl = ego->vl;
      INT ivs = ego->ivs, ovs = ego->ovs;
-     float *W = ego->td->W;
-     float *buf;
+     R *W = ego->td->W;
+     R *buf;
 
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
      for (iv = 0; iv < vl; ++iv, I += ivs, O += ovs) {
 	  buf[0] = I[0];
@@ -284,7 +284,7 @@ static void apply_ro10(const plan *ego_, float *I, float *O)
 	  }
      }
 
-     fftwf_ifree(buf);
+     X(ifree)(buf);
 }
 
 static void awake(plan *ego_, enum wakefulness wakefulness)
@@ -296,23 +296,23 @@ static void awake(plan *ego_, enum wakefulness wakefulness)
           { TW_NEXT, 1, 0 }
      };
 
-     fftwf_plan_awake(ego->cld, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
 
-     fftwf_twiddle_awake(wakefulness, &ego->td, reodft010e_tw, 
+     X(twiddle_awake)(wakefulness, &ego->td, reodft010e_tw, 
 		      4*ego->n, 1, ego->n/2+1);
 }
 
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld);
+     X(plan_destroy_internal)(ego->cld);
 }
 
 static void print(const plan *ego_, printer *p)
 {
      const P *ego = (const P *) ego_;
      p->print(p, "(%se-r2hc-%D%v%(%p%))",
-	      fftwf_rdft_kind_str(ego->kind), ego->n, ego->vl, ego->cld);
+	      X(rdft_kind_str)(ego->kind), ego->n, ego->vl, ego->cld);
 }
 
 static int applicable0(const solver *ego_, const problem *p_)
@@ -338,12 +338,12 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      P *pln;
      const problem_rdft *p;
      plan *cld;
-     float *buf;
+     R *buf;
      INT n;
      opcnt ops;
 
      static const plan_adt padt = {
-	  fftwf_rdft_solve, awake, print, destroy
+	  X(rdft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr))
@@ -352,12 +352,12 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      p = (const problem_rdft *) p_;
 
      n = p->sz->dims[0].n;
-     buf = (float *) MALLOC(sizeof(float) * n, BUFFERS);
+     buf = (R *) MALLOC(sizeof(R) * n, BUFFERS);
 
-     cld = fftwf_mkplan_d(plnr, fftwf_mkproblem_rdft_1_d(fftwf_mktensor_1d(n, 1, 1),
-                                                   fftwf_mktensor_0d(),
+     cld = X(mkplan_d)(plnr, X(mkproblem_rdft_1_d)(X(mktensor_1d)(n, 1, 1),
+                                                   X(mktensor_0d)(),
                                                    buf, buf, R2HC));
-     fftwf_ifree(buf);
+     X(ifree)(buf);
      if (!cld)
           return (plan *)0;
 
@@ -376,9 +376,9 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      pln->td = 0;
      pln->kind = p->kind[0];
      
-     fftwf_tensor_tornk1(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
+     X(tensor_tornk1)(p->vecsz, &pln->vl, &pln->ivs, &pln->ovs);
      
-     fftwf_ops_zero(&ops);
+     X(ops_zero)(&ops);
      ops.other = 4 + (n-1)/2 * 10 + (1 - n % 2) * 5;
      if (p->kind[0] == REDFT01 || p->kind[0] == RODFT01) {
 	  ops.add = (n-1)/2 * 6;
@@ -389,9 +389,9 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
 	  ops.mul = 1 + (n-1)/2 * 6 + (1 - n % 2) * 2;
      }
      
-     fftwf_ops_zero(&pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &ops, &pln->super.super.ops);
-     fftwf_ops_madd2(pln->vl, &cld->ops, &pln->super.super.ops);
+     X(ops_zero)(&pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &ops, &pln->super.super.ops);
+     X(ops_madd2)(pln->vl, &cld->ops, &pln->super.super.ops);
 
      return &(pln->super.super);
 }
@@ -404,7 +404,7 @@ static solver *mksolver(void)
      return &(slv->super);
 }
 
-void fftwf_reodft010e_r2hc_register(planner *p)
+void X(reodft010e_r2hc_register)(planner *p)
 {
      REGISTER_SOLVER(p, mksolver());
 }

@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003, 2007-8 Matteo Frigo
- * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,21 +14,24 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
-#include "../codelet-rdft.h"
+#include "codelet-rdft.h"
 
 #include "r2cf.h"
-const kr2c_genus fftwf_rdft_r2cf_genus = { R2HC, 1 };
-
+const kr2c_genus GENUS = { R2HC, 1 };
+#undef GENUS
 
 #include "r2cfII.h"
-const kr2c_genus fftwf_rdft_r2cfII_genus = { R2HCII, 1 };
+const kr2c_genus GENUS = { R2HCII, 1 };
+#undef GENUS
 
 #include "r2cb.h"
-const kr2c_genus fftwf_rdft_r2cb_genus = { HC2R, 1 };
+const kr2c_genus GENUS = { HC2R, 1 };
+#undef GENUS
 
 #include "r2cbIII.h"
-const kr2c_genus fftwf_rdft_r2cbIII_genus = { HC2RIII, 1 };
+const kr2c_genus GENUS = { HC2RIII, 1 };
+#undef GENUS

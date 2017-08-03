@@ -20,8 +20,8 @@
 
 #include "api.h"
 
-fftwf_plan fftwf_plan_dft_c2r(int rank, const int *n, fftwf_complex *in, float *out, unsigned flags)
+X(plan) X(plan_dft_c2r)(int rank, const int *n, C *in, R *out, unsigned flags)
 {
-     return fftwf_plan_many_dft_c2r(rank, n, 1,
+     return X(plan_many_dft_c2r)(rank, n, 1,
 				 in, 0, 1, 1, out, 0, 1, 1, flags);
 }

@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
+
+
 #include "ifftw.h"
 #include <string.h>
 #include <stddef.h>
@@ -67,7 +88,7 @@ static void mygets(scanner *sc, char *s, size_t maxlen)
 static long getlong(scanner *sc, int base, int *ret)
 {
      int sign = 1, ch, count;
-     long x = 0;
+     long x = 0;     
 
      ch = GETCHR(sc);
      if (ch == '-' || ch == '+') {
@@ -75,7 +96,7 @@ static long getlong(scanner *sc, int base, int *ret)
 	  ch = GETCHR(sc);
      }
      for (count = 0; ; ++count) {
-	  if (isdigit(ch))
+	  if (isdigit(ch)) 
 	       ch -= '0';
 	  else if (isupper(ch))
 	       ch -= 'A' - 10;
@@ -167,7 +188,7 @@ static int scan(scanner *sc, const char *format, ...)
      return ret;
 }
 
-scanner *fftwf_mkscanner(size_t size, int (*getchr)(scanner *sc))
+scanner *X(mkscanner)(size_t size, int (*getchr)(scanner *sc))
 {
      scanner *s = (scanner *)MALLOC(size, OTHER);
      s->scan = scan;
@@ -177,7 +198,7 @@ scanner *fftwf_mkscanner(size_t size, int (*getchr)(scanner *sc))
      return s;
 }
 
-void fftwf_scanner_destroy(scanner *sc)
+void X(scanner_destroy)(scanner *sc)
 {
-     fftwf_ifree(sc);
+     X(ifree)(sc);
 }

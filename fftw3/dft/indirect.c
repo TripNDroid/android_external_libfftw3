@@ -1,4 +1,33 @@
+/*
+ * Copyright (c) 2003, 2007-14 Matteo Frigo
+ * Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ */
 
+
+
+/* solvers/plans for vectors of small DFT's that cannot be done
+   in-place directly.  Use a rank-0 plan to rearrange the data
+   before or after the transform.  Can also change an out-of-place
+   plan into a copy + in-place (where the in-place transform
+   is e.g. unit stride). */
+
+/* FIXME: merge with rank-geq2.c(?), since this is just a special case
+   of a rank split where the first/second transform has rank 0. */
 
 #include "dft.h"
 
@@ -23,7 +52,7 @@ typedef struct {
 
 /*-----------------------------------------------------------------------*/
 /* first rearrange, then transform */
-static void apply_before(const plan *ego_, float *ri, float *ii, float *ro, float *io)
+static void apply_before(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      const P *ego = (const P *) ego_;
 
@@ -39,8 +68,8 @@ static void apply_before(const plan *ego_, float *ri, float *ii, float *ro, floa
 
 static problem *mkcld_before(const problem_dft *p)
 {
-     return fftwf_mkproblem_dft_d(fftwf_tensor_copy_inplace(p->sz, INPLACE_OS),
-			       fftwf_tensor_copy_inplace(p->vecsz, INPLACE_OS),
+     return X(mkproblem_dft_d)(X(tensor_copy_inplace)(p->sz, INPLACE_OS),
+			       X(tensor_copy_inplace)(p->vecsz, INPLACE_OS),
 			       p->ro, p->io, p->ro, p->io);
 }
 
@@ -52,7 +81,7 @@ static const ndrct_adt adt_before =
 /*-----------------------------------------------------------------------*/
 /* first transform, then rearrange */
 
-static void apply_after(const plan *ego_, float *ri, float *ii, float *ro, float *io)
+static void apply_after(const plan *ego_, R *ri, R *ii, R *ro, R *io)
 {
      const P *ego = (const P *) ego_;
 
@@ -68,8 +97,8 @@ static void apply_after(const plan *ego_, float *ri, float *ii, float *ro, float
 
 static problem *mkcld_after(const problem_dft *p)
 {
-     return fftwf_mkproblem_dft_d(fftwf_tensor_copy_inplace(p->sz, INPLACE_IS),
-			       fftwf_tensor_copy_inplace(p->vecsz, INPLACE_IS),
+     return X(mkproblem_dft_d)(X(tensor_copy_inplace)(p->sz, INPLACE_IS),
+			       X(tensor_copy_inplace)(p->vecsz, INPLACE_IS),
 			       p->ri, p->ii, p->ri, p->ii);
 }
 
@@ -82,15 +111,15 @@ static const ndrct_adt adt_after =
 static void destroy(plan *ego_)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_destroy_internal(ego->cld);
-     fftwf_plan_destroy_internal(ego->cldcpy);
+     X(plan_destroy_internal)(ego->cld);
+     X(plan_destroy_internal)(ego->cldcpy);
 }
 
 static void awake(plan *ego_, enum wakefulness wakefulness)
 {
      P *ego = (P *) ego_;
-     fftwf_plan_awake(ego->cldcpy, wakefulness);
-     fftwf_plan_awake(ego->cld, wakefulness);
+     X(plan_awake)(ego->cldcpy, wakefulness);
+     X(plan_awake)(ego->cld, wakefulness);
 }
 
 static void print(const plan *ego_, printer *p)
@@ -119,24 +148,24 @@ static int applicable0(const solver *ego_, const problem *p_,
 		    further require that at least some transform
 		    strides must decrease */
 		 || (p->ri == p->ro
-		     && !fftwf_tensor_inplace_strides2(p->sz, p->vecsz)
-		     && fftwf_tensor_strides_decrease(
+		     && !X(tensor_inplace_strides2)(p->sz, p->vecsz)
+		     && X(tensor_strides_decrease)(
 			  p->sz, p->vecsz,
-			  ego->adt->apply == apply_after ?
+			  ego->adt->apply == apply_after ? 
 			  INPLACE_IS : INPLACE_OS))
 
 		 /* or problem must be out of place, transforming
 		    from stride 1/2 to bigger stride, for apply_after */
 		 || (p->ri != p->ro && ego->adt->apply == apply_after
 		     && !NO_DESTROY_INPUTP(plnr)
-		     && fftwf_tensor_min_istride(p->sz) <= 2
-		     && fftwf_tensor_min_ostride(p->sz) > 2)
-
+		     && X(tensor_min_istride)(p->sz) <= 2
+		     && X(tensor_min_ostride)(p->sz) > 2)
+			  
 		 /* or problem must be out of place, transforming
 		    to stride 1/2 from bigger stride, for apply_before */
 		 || (p->ri != p->ro && ego->adt->apply == apply_before
-		     && fftwf_tensor_min_ostride(p->sz) <= 2
-		     && fftwf_tensor_min_istride(p->sz) > 2)
+		     && X(tensor_min_ostride)(p->sz) <= 2
+		     && X(tensor_min_istride)(p->sz) > 2)
 		  )
 	  );
 }
@@ -160,34 +189,34 @@ static plan *mkplan(const solver *ego_, const problem *p_, planner *plnr)
      plan *cld = 0, *cldcpy = 0;
 
      static const plan_adt padt = {
-	  fftwf_dft_solve, awake, print, destroy
+	  X(dft_solve), awake, print, destroy
      };
 
      if (!applicable(ego_, p_, plnr))
           return (plan *) 0;
 
      cldcpy =
-	  fftwf_mkplan_d(plnr,
-		      fftwf_mkproblem_dft_d(fftwf_mktensor_0d(),
-					 fftwf_tensor_append(p->vecsz, p->sz),
+	  X(mkplan_d)(plnr, 
+		      X(mkproblem_dft_d)(X(mktensor_0d)(),
+					 X(tensor_append)(p->vecsz, p->sz),
 					 p->ri, p->ii, p->ro, p->io));
 
      if (!cldcpy) goto nada;
 
-     cld = fftwf_mkplan_f_d(plnr, ego->adt->mkcld(p), NO_BUFFERING, 0, 0);
+     cld = X(mkplan_f_d)(plnr, ego->adt->mkcld(p), NO_BUFFERING, 0, 0);
      if (!cld) goto nada;
 
      pln = MKPLAN_DFT(P, &padt, ego->adt->apply);
      pln->cld = cld;
      pln->cldcpy = cldcpy;
      pln->slv = ego;
-     fftwf_ops_add(&cld->ops, &cldcpy->ops, &pln->super.super.ops);
+     X(ops_add)(&cld->ops, &cldcpy->ops, &pln->super.super.ops);
 
      return &(pln->super.super);
 
  nada:
-     fftwf_plan_destroy_internal(cld);
-     fftwf_plan_destroy_internal(cldcpy);
+     X(plan_destroy_internal)(cld);
+     X(plan_destroy_internal)(cldcpy);
      return (plan *)0;
 }
 
@@ -199,7 +228,7 @@ static solver *mksolver(const ndrct_adt *adt)
      return &(slv->super);
 }
 
-void fftwf_dft_indirect_register(planner *p)
+void X(dft_indirect_register)(planner *p)
 {
      unsigned i;
      static const ndrct_adt *const adts[] = {
